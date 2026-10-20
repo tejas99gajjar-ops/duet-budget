@@ -73,6 +73,14 @@ document.addEventListener('click', (e) => { if (e.target.closest('[data-reload]'
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => pref('theme', 'system') === 'system' && applyTheme());
 document.addEventListener('visibilitychange', () => { if (!document.hidden && signedIn() && S.state.online) S.flush().catch(() => {}); });
 
+// If a phone renders the page in 'Desktop site' mode (viewport much wider than the device screen), scale the page to fit the screen.
+function fitScreen() {
+  const root = document.documentElement, coarse = matchMedia('(pointer:coarse)').matches;
+  const z = coarse && screen.width && innerWidth > screen.width * 1.25 ? innerWidth / screen.width : 1;
+  root.style.zoom = z === 1 ? '' : String(z); root.style.setProperty('--z', String(z));
+}
+fitScreen(); addEventListener('resize', fitScreen); addEventListener('orientationchange', () => setTimeout(fitScreen, 200));
+
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 (async function start() {

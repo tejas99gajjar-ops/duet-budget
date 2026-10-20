@@ -1,5 +1,5 @@
 // App-shell cache so the app opens with no signal. Supabase calls (other origins) are never cached here.
-const CACHE = 'duet-shell-v3';
+const CACHE = 'duet-shell-v4';
 const SHELL = ['./', 'index.html', 'styles.css', 'theme.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'vendor/supabase.js',
   'js/app.js', 'js/core.js', 'js/charts.js', 'js/auth.js', 'js/tx.js', 'js/money.js', 'js/analytics.js', 'js/settings.js', 'js/dates.js', 'js/domain.js', 'js/store.js', 'js/backend.js', 'js/local-api.js'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => Promise.all(SHELL.map((u) => c.add(u).catch(() => {})))).then(() => self.skipWaiting())));

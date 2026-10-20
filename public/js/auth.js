@@ -7,7 +7,7 @@ export function welcome(root) {
   const features = [['📊', 'Track Everything', 'Expenses, income, transfers and investments — together in one shared place.', 'var(--accent)'],
     ['🎯', 'Smart Budgets', 'Category limits with a safe-to-spend-per-day pace and alerts before you overspend.', 'var(--purple)'],
     ['👥', 'Built for Two', 'Connect with a partner or friend. One shared account, everyone sees every change instantly.', 'var(--amber)'],
-    ['🔒', 'Yours Alone', 'Self-hosted: your data lives on your own server, not in someone else\'s cloud.', 'var(--blue)']];
+    ['🔒', 'Private to You Two', 'Only people in your shared account can see your data. Works offline and syncs when you\'re back online.', 'var(--blue)']];
   html(root, h`<div class="col" style="gap:16px;padding-top:24px">
     ${logo}<div class="center"><h1 style="font-size:40px">Duet Budget</h1><p class="muted" style="margin-top:8px">Your money, finally under control.<br>Smart budgeting for two.</p></div>
     ${features.map(([e, t, d, c]) => h`<div class="feature"><div class="fi" style="background:color-mix(in srgb,${raw(c)} 20%,transparent)">${e}</div><div><b>${t}</b><div class="muted small" style="font-size:13px;margin-top:2px">${d}</div></div></div>`)}
