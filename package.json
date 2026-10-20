@@ -1,0 +1,21 @@
+{
+  "name": "duet-budget",
+  "version": "1.2.0",
+  "description": "Shared budget & cashflow tracker. Static PWA + Supabase (Postgres, auth, realtime).",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "dev": "node scripts/serve.js",
+    "legacy:server": "node server.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test --test-force-exit test/*.test.js",
+    "schema:check": "node supabase/schema.check.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10"
+  }
+}
