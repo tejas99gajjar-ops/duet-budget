@@ -169,6 +169,12 @@ export function buildModel(planIn, opts = {}) {
     }
   }
 
+  // money regularly sent to dependants (e.g. parents), in today's rupees, until the given year (or for life). Counted with premiums: fixed commitments, never switched off with events
+  for (const d of plan.profile.dependants || []) {
+    const mo = Number(d.monthly) || 0, last = Number(d.untilYear) || endYear; if (!mo) continue;
+    for (let i = 0; i < nYears; i++) { const y = baseYear + i; if (y > last) break; const v = mo * 12 * frac(y); if (y < retireYear) premReal[i] += v; else premPostReal[i] += v; }
+  }
+
   // ---- cost events
   const evReal = zero(), evPostReal = zero();
   const COST_KINDS = ['baby', 'school', 'house', 'car', 'lifestyle', 'medical', 'custom', 'loan_start'];

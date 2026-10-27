@@ -41,3 +41,12 @@ test('importing something that is not a plan is rejected with a readable message
   assert.throws(() => m.parseJSON('{"hello":1}'), /does not look like/);
   assert.throws(() => m.parseJSON('not json'), /not valid JSON/);
 });
+
+test('support sent to dependants raises the retirement target and lowers the projection while it runs', () => {
+  const base = defaultPlan({ today: '2026-10-27' }); base.incomes.push({ id: 'i1', person: 'p1', label: 'Pay', type: 'active', takeHome: 150000 }); base.spending.currentMonthly = 60000;
+  const withDep = JSON.parse(JSON.stringify(base)); withDep.profile.dependants = [{ id: 'd1', name: 'Parents', monthly: 10000, untilYear: null }];
+  const a = runPlan(normalizePlan(base), { today: '2026-10-27' }), b = runPlan(normalizePlan(withDep), { today: '2026-10-27' });
+  assert.ok(b.gap.target > a.gap.target, 'target should rise');
+  const short = JSON.parse(JSON.stringify(withDep)); short.profile.dependants[0].untilYear = 2028;
+  assert.ok(runPlan(normalizePlan(short), { today: '2026-10-27' }).gap.target < b.gap.target, 'a short commitment costs less');
+});

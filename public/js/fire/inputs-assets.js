@@ -1,5 +1,5 @@
 // Screen: Inputs · Assets & investments. Holdings with asset-class tags, SIPs, invested vs current value, buy/withdraw, Duet links.
-import { h, bind, IC, chip, tile, note, head, fxNav, srcChip, sheet, openForm, undoToast, toast, errToast } from './ui.js';
+import { h, bind, IC, chip, tile, note, head, fxNav, srcChip, sheet, openForm, undoToast, toast, errToast, confirmSheet } from './ui.js';
 import { html } from '../core.js';
 import * as FS from './store.js';
 import * as X from './ctx.js';
@@ -50,11 +50,13 @@ function holdingMenu(id) {
     <div class="fx-list">
       <button class="fx-li" data-act="m_edit"><span class="grow"><b>Edit details</b><div class="fx-sub">Name, tags, class mix, owner, value</div></span>${IC.chev}</button>
       <button class="fx-li" data-act="m_sip"><span class="grow"><b>SIPs</b><div class="fx-sub">${(x.sips || []).length ? `${(x.sips || []).length} · ${inrF(sipTotal(x))}/mo active` : 'None yet. Add a monthly SIP.'}</div></span>${IC.chev}</button>
+      <button class="fx-li" data-act="m_del"><span class="grow"><b class="bad">Delete holding</b><div class="fx-sub">Removes it from the plan. You can undo for a few seconds.</div></span></button>
       <button class="fx-li" data-act="m_buy"><span class="grow"><b>Record a purchase or withdrawal</b><div class="fx-sub">Adjusts value and amount invested</div></span>${IC.chev}</button>
       ${x.units != null ? h`<button class="fx-li" data-act="m_px"><span class="grow"><b>Update price</b><div class="fx-sub">${x.price != null ? `₹${x.price} per unit` : 'No price set'}</div></span>${IC.chev}</button>` : ''}
     </div><div class="fx-row"><button class="fx-btn ghost" data-act="close" style="flex:1">Close</button></div>`, { click: {
     m_edit: () => { s.close(); holdingSheet(id); }, m_sip: () => { s.close(); sipList(id); }, m_buy: () => { s.close(); flowSheet(id); },
     m_px: () => { s.close(); priceSheet(id); },
+    m_del: async () => { s.close(); if (await confirmSheet(`Delete ${x.name}?`, 'It is removed from your plan. You can undo this for a few seconds.', 'Delete')) { FS.edit('holdings', (l) => l.filter((q) => q.id !== id), { immediate: true }); undoToast('Holding removed', () => FS.undo()); } },
   } });
 }
 
