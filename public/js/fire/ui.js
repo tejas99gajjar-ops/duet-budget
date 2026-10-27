@@ -159,3 +159,7 @@ export function openInfo(title, content, buttons = [['Got it', null]]) {
 }
 export const uidShort = (p) => p + Math.random().toString(36).slice(2, 8);
 export { esc };
+
+/** Slim bar at the top of every planner screen: switch between the budget app and FIRE, add a transaction, jump to budget screens. */
+export const fxTop = () => h`<div class="fx-top"><div class="fx-row fx-between"><div class="fx-switch" role="tablist" aria-label="App section"><a href="#/dashboard" role="tab" aria-selected="false">💰 Budget</a><a href="#/fire" role="tab" aria-selected="true" class="on">🔥 FIRE</a></div><a class="fx-addtx" href="#/tx/new" aria-label="Add transaction">${IC.plus}<span>Add</span></a></div>
+  <div class="fx-quick" aria-label="Budget shortcuts">${[['#/dashboard', 'Dashboard'], ['#/wallets', 'Wallets'], ['#/budgets', 'Budgets'], ['#/analytics', 'Analytics'], ['#/transactions', 'Transactions'], ['#/settings', 'Settings']].map(([href, l]) => h`<a href="${href}">${l}</a>`)}</div></div>`;

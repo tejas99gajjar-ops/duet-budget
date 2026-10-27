@@ -3,7 +3,7 @@ import { h, html, sheetOpen } from '../core.js';
 import { on as onApp } from '../store.js';
 import * as FS from './store.js';
 import * as X from './ctx.js';
-import { head, fxNav, IC, toast } from './ui.js';
+import { head, fxNav, fxTop, IC, toast } from './ui.js';
 
 const cssHref = new URL('../../fire.css', import.meta.url).href;
 function ensureCss() { if (!document.getElementById('fire-css')) { const l = document.createElement('link'); l.id = 'fire-css'; l.rel = 'stylesheet'; l.href = cssHref; document.head.append(l); } }
@@ -30,6 +30,7 @@ async function draw() {
   const loader = SCREENS[name]; if (!loader) { location.hash = '#/fire'; return; }
   try { const fn = await loader(); await fn(root, { parts: rest, params: parts }); }
   catch (e) { console.error(e); html(root, h`<div class="fx"><div class="fx-note warn"><span>😕</span><div><b>This screen could not load.</b><div class="fx-sub">${e.message}</div></div></div>${fxNav(NAV_OF[name] || 'overview')}</div>`); }
+  const box = root.querySelector('.fx'); if (box && !box.querySelector('.fx-top')) box.insertAdjacentHTML('afterbegin', fxTop().s);
   scrollTo(0, y);
 }
 const rerenderSoon = () => { clearTimeout(timer); timer = setTimeout(() => { if (!sheetOpen()) draw(); }, 90); };
@@ -53,7 +54,7 @@ export async function fireRoute(root, params) {
 }
 
 async function setupScreen(root) {
-  html(root, h`<div class="fx">${head({ kicker: 'FIRE PLANNER', title: 'One-time setup', back: '#/dashboard' })}
+  html(root, h`<div class="fx">${fxTop()}${head({ kicker: 'FIRE PLANNER', title: 'One-time setup', back: '#/dashboard' })}
     <div class="fx-card"><h3>Create the planner's tables</h3><p class="fx-sub" style="margin-top:8px">The planner stores your plan in two new tables. This does not touch your wallets, transactions, budgets or accounts: it only adds new tables.</p>
       <ol style="padding-left:20px;line-height:1.7;margin-top:10px"><li>Tap <b>Copy setup SQL</b></li><li>Open your Supabase project, then <b>SQL Editor → New query</b></li><li>Paste, then <b>Run</b> (it should say Success)</li><li>Come back here and tap <b>Check again</b></li></ol>
       <div class="col" style="gap:10px;margin-top:14px"><button class="fx-btn" id="fx-copy">Copy setup SQL</button><button class="fx-btn ghost" id="fx-again">Check again</button></div></div></div>`);
