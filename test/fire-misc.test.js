@@ -50,3 +50,23 @@ test('support sent to dependants raises the retirement target and lowers the pro
   const short = JSON.parse(JSON.stringify(withDep)); short.profile.dependants[0].untilYear = 2028;
   assert.ok(runPlan(normalizePlan(short), { today: '2026-10-27' }).gap.target < b.gap.target, 'a short commitment costs less');
 });
+
+test('what-if: skipping an event by id removes its cost, and an extra monthly saving is never counted as a cash shortfall', () => {
+  const p = normalizePlan(defaultPlan({ today: '2026-10-27' }));
+  p.incomes = [{ id: 'i1', person: 'p1', label: 'Pay', type: 'active', takeHome: 100000, growthPct: 6 }]; p.spending.currentMonthly = 90000; p.holdings = [{ id: 'h1', name: 'Pot', kind: 'mf', assetClass: 'equity', value: 8000000, sips: [] }];
+  p.events = [{ id: 'e1', kind: 'custom', name: 'Big spend', date: '2032-01', cost: 2000000, enabled: true }];
+  const a = runPlan(p, { today: '2026-10-27' }), b = runPlan(p, { today: '2026-10-27', overrides: { eventsOffIds: ['e1'] } });
+  assert.ok(b.gap.projected > a.gap.projected, 'without the event there is more left');
+  const c = runPlan(p, { today: '2026-10-27', overrides: { extraMonthly: 20000 } });
+  assert.ok(Math.abs(c.projection.deficitTotal - a.projection.deficitTotal) < 1, 'extra saving must not create or enlarge a deficit');
+  assert.ok(c.gap.projected > a.gap.projected, 'but it does add to the corpus');
+});
+
+test('sanity checks flag a missing health policy and cash shortfalls in plain words', async () => {
+  const { modelChecks } = await import('../public/js/fire/checks.js');
+  const p = normalizePlan(defaultPlan({ today: '2026-10-27' })); p.incomes = [{ id: 'i1', person: 'p1', label: 'Pay', type: 'active', takeHome: 80000, growthPct: 2 }]; p.spending.currentMonthly = 90000;
+  const res = runPlan(p, { today: '2026-10-27' }), list = modelChecks(p, res, null);
+  assert.ok(list.some((c) => /health insurance/i.test(c.title)));
+  assert.ok(list.some((c) => /cost more than you earn/i.test(c.title)));
+  assert.ok(list.every((c) => c.title && c.text));
+});

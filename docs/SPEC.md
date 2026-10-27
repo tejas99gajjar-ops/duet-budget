@@ -49,3 +49,9 @@ Bank-feed sync, multi-currency conversion, receipts/photos, CSV import, native A
 
 ## FIRE planner
 Real (today's rupee) year-by-year engine: target corpus = present value of each retirement year's spending (+ premiums and events, − passive income, tax grossed up) at the real retirement return; projected corpus = holdings grown at their own real return plus SIPs (with step-ups), goal earmarks and cash-flow deficits drawn from the corpus; gap = target − projected. Monte Carlo uses a seeded generator with class-level market factors, random inflation, medical shocks and optional sequence-risk. Scenarios override assumptions. Plans are stored one per household in `fire_plans` (jsonb section columns) with dated copies in `fire_snapshots`. No network calls leave the device except normal Supabase sync. All text is estimates, not advice.
+
+### Model details added after review
+- Healthcare is always reserved at least 8% of retirement spending (editable) and rises faster than general prices (10% a year by default) plus 1% extra a year after age 60.
+- An optional "unrecorded yearly costs" cushion lifts spending for insurance renewals, travel and gifts that a normal month never shows.
+- Extra monthly saving used by the gap levers and what-if lab is assumed funded by extra income or spending cuts, so it is never counted as a cash-flow shortfall; the plan's own SIPs, EMIs and events are, and any year they exceed income is drawn from the investments.
+- Sanity checks (`checks.js`) explain in plain words anything that makes the answer too hopeful or too gloomy.

@@ -109,7 +109,7 @@ export function buildModel(planIn, opts = {}) {
   const goals = plan.goals.filter((g) => !g.archived);
   const retGoal = goals.find((g) => g.kind === 'retirement') || { id: 'g_ret', kind: 'retirement', name: 'Retirement corpus' };
   const emergency = goals.find((g) => g.kind === 'emergency');
-  const eventsOn = (e) => e.enabled !== false && !ov.eventsOff;
+  const eventsOn = (e) => e.enabled !== false && !ov.eventsOff && !(ov.eventsOffIds || []).includes(e.id);
 
   // ---- income: before retirement it feeds household cash flow; after, any income still running offsets withdrawals
   const incomeReal = zero(), passiveReal = zero(), incomeMeta = [];
@@ -138,7 +138,9 @@ export function buildModel(planIn, opts = {}) {
 
   // ---- current spending, real
   const catSum = sum((plan.spending.categories || []).map((c) => Number(c.monthly) || 0));
-  const spendMonthly = Number(plan.spending.currentMonthly) || catSum;
+  const spendRaw = Number(plan.spending.currentMonthly) || catSum;
+  const cushion = 1 + Math.max(0, Number(A.unrecordedCostsPct) || 0) / 100;     // yearly costs that never show up in a normal month (insurance renewals, travel, gifts)
+  const spendMonthly = spendRaw * cushion;
   const ls = A.lifestyleInflation?.on ? A.lifestyleInflation.pct / 100 : 0;
   const spendReal = zero();
   for (let i = 0; i < nYears; i++) { const y = baseYear + i; if (y >= retireYear) break; spendReal[i] = (spendMonthly * 12 * frac(y) * Math.pow(1 + ls, y - baseYear)); }
@@ -226,6 +228,7 @@ export function buildModel(planIn, opts = {}) {
     const c = zero(), st = (ov.extraStepUpPct ?? baseSalaryGrowth + (ov.incomeGrowthDeltaPct || 0)) / 100;
     for (let i = 0; i < nYears; i++) { const y = baseYear + i; if (y > lastPre) break; c[i] = (ov.extraMonthly * Math.pow(1 + st, y - baseYear) * 12 * frac(y)) / Math.pow(1 + infl, tmid(y)); }
     virtual('__extra', 'Extra monthly saving', c, 'equity', retGoal.id);
+    holdings[holdings.length - 1].contribTake = zero();   // an extra amount you choose to save is assumed funded by extra income or spending cuts, so it never shows up as a cash-flow shortfall
   }
   for (const g of goals) {
     if (!Number(g.monthlyAlloc)) continue;
@@ -239,11 +242,14 @@ export function buildModel(planIn, opts = {}) {
 
   // ---- retirement phase
   const nonEdu = (plan.spending.categories || []).filter((c) => c.group !== 'education');
-  const curNonEdu = sum(nonEdu.map((c) => Number(c.monthly) || 0)) || spendMonthly;
+  const curNonEdu = (sum(nonEdu.map((c) => Number(c.monthly) || 0)) || spendRaw) * cushion;
   let retMonthly = ov.retireSpendMonthly ?? plan.spending.retirement?.monthly ?? curNonEdu;
   retMonthly = Math.max(0, retMonthly * (ov.retireSpendFactor ?? 1) - (ov.spendCutMonthly || 0));
   let shares = plan.spending.retirement?.shares;
   if (!shares) { const t = sum(nonEdu.map((c) => Number(c.monthly) || 0)); shares = t ? Object.fromEntries(GROUPS.map((g) => [g, sum(nonEdu.filter((c) => c.group === g).map((c) => Number(c.monthly) || 0)) / t])) : { general: 0.85, medical: 0.1, housing: 0.05, education: 0 }; }
+  // Healthcare is the cost that grows fastest and matters most late in life. If the person's categories carry little or none, reserve a minimum share for it so it is never left out.
+  const medMin = Math.max(0, Number(A.medicalMinSharePct ?? 8)) / 100;
+  if ((shares.medical || 0) < medMin) shares = { ...shares, medical: medMin, general: Math.max(0, (shares.general || 0) - (medMin - (shares.medical || 0))) };
   // housing choice in retirement: keep renting (default), own the house (only upkeep, 25% of rent), or a custom monthly amount
   const hs = plan.spending.housing;
   if (hs === 'own') shares = { ...shares, housing: (shares.housing || 0) * 0.25 };
@@ -256,7 +262,7 @@ export function buildModel(planIn, opts = {}) {
   const lifeAtRet = Math.pow(1 + ls, Math.max(0, retireYear - baseYear));
 
   return { plan, today, baseYear, baseMonth, f0, ov, A, people, primary, birth, retireAge, retireYear, horizonAge, endYear, nYears, infl, frac, tmid, rGroup, realRate, goals, retGoal, emergency,
-    cashflowModeled, incomeReal, passiveReal, spendReal, spendMonthly, loanReal, loanInfo, freedReal, premReal, premPostReal, evReal, evPostReal, costEvents, holdings, takeContrib, retMonthly, shares, retNom, rRet, grossUp,
+    cashflowModeled, incomeReal, passiveReal, spendReal, spendMonthly, spendRaw, loanReal, loanInfo, freedReal, premReal, premPostReal, evReal, evPostReal, costEvents, holdings, takeContrib, retMonthly, shares, retNom, rRet, grossUp,
     lifeAtRet, lastPre, incomeMeta, eventArrays, allocW };
 }
 
@@ -266,7 +272,7 @@ export function targetFromModel(m) {
   for (let y = Math.max(m.retireYear, m.baseYear); y < m.endYear; y++) {
     const i = y - m.baseYear, k = y - Math.max(m.retireYear, m.baseYear);
     const byGroup = {}; let spend = 0;
-    for (const g of GROUPS) { const v = m.retMonthly * 12 * (m.shares[g] || 0) * m.rGroup(g, y) * m.lifeAtRet; byGroup[g] = v; spend += v; }
+    for (const g of GROUPS) { const ageUp = g === 'medical' ? Math.pow(1 + (Number(m.A.medicalAgeExtraPct ?? 1) || 0) / 100, Math.max(0, y - m.birth - 60)) : 1; const v = m.retMonthly * 12 * (m.shares[g] || 0) * m.rGroup(g, y) * m.lifeAtRet * ageUp; byGroup[g] = v; spend += v; }   // medical costs also climb with age after 60
     const premiums = m.premPostReal[i], events = m.evPostReal[i], passive = m.passiveReal[i];
     const net = Math.max(0, spend + premiums + events - passive), gross = net * m.grossUp, discount = Math.pow(1 + m.rRet, -k), pv = gross * discount;
     total += pv; rows.push({ year: y, age: y - m.birth, byGroup, premiums, events, passive, spend, net, gross, discount, pv });
@@ -367,7 +373,7 @@ export function runPlan(planIn, opts = {}) {
   const emiNow = sum(m.plan.loans.filter((l) => l.status !== 'closed' && l.status !== 'planned').map((l) => Number(l.currentPayment ?? l.emi) || 0));
   const income = takeHome + passiveNow;
   const meta = { baseYear: m.baseYear, today: m.today, retireAge: m.retireAge, retireYear: m.retireYear, yearsToRet: yrs, horizonAge: m.horizonAge, infl: m.infl, birth: m.birth, ageNow: m.baseYear - m.birth,
-    takeHome: income, spendNow: m.spendMonthly, emiNow, sipNow, sipTake, freeCash: income - m.spendMonthly - emiNow - sipTake, savingsRate: income ? sipNow / income : 0, scenarioId: m.plan.settings.activeScenarioId, nominalFactor };
+    takeHome: income, spendNow: m.spendRaw, emiNow, sipNow, sipTake, freeCash: income - m.spendMonthly - emiNow - sipTake, savingsRate: income ? sipNow / income : 0, scenarioId: m.plan.settings.activeScenarioId, nominalFactor };
   return { model: m, meta, target, projection: proj, post, goals,
     gap: { amount: gapAmt, projected, target: target.total, pct: target.total ? projected / target.total : 1, status: STATUS(target.total ? projected / target.total : 1), nominalAmount: gapAmt * nominalFactor,
       nominalTarget: target.total * nominalFactor, nominalProjected: projected * nominalFactor, deficitTotal: proj.deficitTotal, unfunded: proj.unfunded, runsOutAge: post.runsOutAge } };

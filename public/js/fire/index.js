@@ -23,16 +23,23 @@ const SCREENS = {
 const NAV_OF = { '': 'overview', detail: 'overview', goals: 'goals', goal: 'goals', inputs: 'inputs', live: 'live', checkin: 'checkin', settings: 'overview', prices: 'inputs' };
 let current = null, wired = false, timer = null;
 
+let drawId = 0, lastKey = null, lastHtml = '', prefetched = false;
 async function draw() {
-  if (!current) return; let { root, parts } = current; if (!document.contains(root)) return;
-  const fresh = root.cloneNode(false); root.replaceWith(fresh); root = current.root = fresh;       // new element = no stale click handlers
-  const [name = '', ...rest] = parts; const y = scrollY;
+  if (!current) return; const old = current.root, { parts } = current; if (!document.contains(old)) return;
+  const id = ++drawId, [name = '', ...rest] = parts, key = parts.slice(0, 2).join('/');
   const loader = SCREENS[name]; if (!loader) { location.hash = '#/fire'; return; }
-  try { const fn = await loader(); await fn(root, { parts: rest, params: parts }); }
-  catch (e) { console.error(e); html(root, h`<div class="fx"><div class="fx-note warn"><span>😕</span><div><b>This screen could not load.</b><div class="fx-sub">${e.message}</div></div></div>${fxNav(NAV_OF[name] || 'overview')}</div>`); }
-  const box = root.querySelector('.fx'); if (box && !box.querySelector('.fx-top')) box.insertAdjacentHTML('afterbegin', fxTop().s);
-  scrollTo(0, y);
+  // Build the next screen off to the side and swap it in when it is ready, so the old one stays visible (no blank flash) and no stale click handlers survive.
+  const fresh = old.cloneNode(false), y = scrollY, sameScreen = key === lastKey;
+  try { const fn = await loader(); await fn(fresh, { parts: rest, params: parts }); }
+  catch (e) { console.error(e); html(fresh, h`<div class="fx"><div class="fx-note warn"><span>😕</span><div><b>This screen could not load.</b><div class="fx-sub">${e.message}</div></div></div>${fxNav(NAV_OF[name] || 'overview')}</div>`); }
+  if (id !== drawId || !document.contains(old)) return;          // a newer navigation took over
+  const box = fresh.querySelector('.fx'); if (box && !box.querySelector('.fx-top')) box.insertAdjacentHTML('afterbegin', fxTop().s);
+  if (box && !sameScreen) box.classList.add('fx-enter');
+  fresh.classList.remove('fx-stale'); old.replaceWith(fresh); current.root = fresh; lastKey = key; lastHtml = fresh.innerHTML;
+  scrollTo(0, sameScreen ? y : 0);                                // a new screen opens at its top; a refresh of the same screen keeps your place
 }
+/** Warm the screens in the background so moving between tabs is instant after the first visit. */
+function prefetch() { if (prefetched) return; prefetched = true; const run = () => Object.values(SCREENS).forEach((l) => l().catch(() => {})); (window.requestIdleCallback || ((f) => setTimeout(f, 1200)))(run); }
 const rerenderSoon = () => { clearTimeout(timer); timer = setTimeout(() => { if (!sheetOpen()) draw(); }, 90); };
 
 function wire() {
@@ -44,8 +51,10 @@ function wire() {
 
 export async function fireRoute(root, params) {
   ensureCss(); wire();
-  const parts = String(params.rest || '').split('/').filter(Boolean); current = { root, parts };
-  html(root, h`<div class="fx"><div class="fx-skel"></div><div class="fx-skel"></div><div class="fx-skel"></div></div>`);
+  const parts = String(params.rest || '').split('/').filter(Boolean); current = { root, parts }; lastKey = null;   // arriving by navigation: open at the top
+  if (FS.fs.loaded && lastHtml) { root.innerHTML = lastHtml; root.classList.add('fx-stale'); }   // keep the previous screen on show until the next is ready
+  else html(root, h`<div class="fx"><div class="fx-skel"></div><div class="fx-skel"></div><div class="fx-skel"></div></div>`);
+  prefetch();
   if (!FS.fs.loaded) await FS.load();
   if (FS.fs.needsSetup) return setupScreen(root);
   if (FS.fs.error) return html(root, h`<div class="fx"><div class="fx-note warn"><span>😕</span><div><b>Could not load the FIRE planner.</b><div class="fx-sub">${FS.fs.error}</div><button class="fx-btn small" style="margin-top:10px" data-reload>Retry</button></div></div></div>`);

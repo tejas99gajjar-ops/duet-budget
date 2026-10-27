@@ -138,7 +138,11 @@ select.fx-in{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .fx-chips[style*="nowrap"]{scrollbar-width:none;padding-bottom:2px}
 .fx-chips[style*="nowrap"]::-webkit-scrollbar{display:none}
 .fx-step.sm{gap:6px}.fx-step.sm button{width:34px;height:34px;border-radius:10px;font-size:18px}.fx-step.sm .n{font-size:18px;min-width:3.4ch}
-.fx-top{display:flex;flex-direction:column;gap:10px;margin-bottom:2px}
+.fx-top{display:flex;align-items:center;justify-content:space-between;gap:10px;position:sticky;top:0;z-index:25;padding:8px 0;margin:-8px 0 -4px;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px)}
+.fx-stale{pointer-events:none;opacity:.6;transition:opacity .15s}
+.fx-enter{animation:fxin .2s ease-out}
+@keyframes fxin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.fx-enter{animation:none}}
 .fx-switch{display:flex;background:var(--fx-card);border:1px solid var(--fx-line);border-radius:16px;padding:3px;gap:2px}
 .fx-switch a{padding:8px 14px;border-radius:13px;font-weight:800;font-size:14px;color:var(--muted);white-space:nowrap}
 .fx-switch a.on{background:var(--fx);color:#fff}
@@ -146,4 +150,34 @@ select.fx-in{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .fx-addtx svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
 .fx-quick{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px}
 .fx-quick::-webkit-scrollbar{display:none}
+/* nothing may spill out of a card: long text wraps, wide tables scroll inside, big numbers shrink */
+.fx-big{font-size:clamp(24px,7.6vw,34px);white-space:normal;overflow-wrap:anywhere}
+.fx-mid{white-space:normal;overflow-wrap:anywhere}
+.fx-card,.fx-tile,.fx-note,.fx-li,.fx-hub,.fx-step-card,.fx-kv{overflow-wrap:anywhere;min-width:0}
+.fx-card>*,.fx-tile>*,.fx-li>.grow,.fx-hub>.grow{min-width:0}
+.fx-ch{flex-wrap:wrap}
+.fx-seg button{flex:1 1 auto;white-space:nowrap}.fx-seg.sm button{padding:7px 12px}
+.fx-table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fx-kv{flex-wrap:wrap}.fx-kv>span{flex:1 1 40%}
+.fx-hero>*{min-width:0}
+.fx>*{min-width:0;max-width:100%}
 .fx-quick a{flex:none;padding:7px 13px;border-radius:999px;border:1px solid var(--fx-line);font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap}
+.fx-say{font-size:15px;line-height:1.55;color:var(--text);margin:0 0 8px}.fx-say b{font-weight:800}
+.fx-story{display:flex;gap:12px;align-items:flex-start}
+.fx-num{flex:none;width:30px;height:30px;border-radius:10px;background:var(--fx);color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px;margin-top:1px}
+.fx-q{font-size:17px;font-weight:800;line-height:1.3;margin-bottom:6px}
+.fx-more{margin:4px 0 8px;padding:12px;background:var(--fx-tile);border-radius:16px}
+.fx-table-wrap{overflow-x:auto;max-width:100%}
+.fx-ul{margin:6px 0 0;padding-left:20px;font-size:15px;line-height:1.55}.fx-ul li{margin-bottom:6px}
+.fx-check{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:16px;border:1px solid var(--fx-line);background:var(--fx-tile);color:inherit}
+.fx-check .ic{font-size:22px;line-height:1.2;flex:none}
+.fx-check.warn{border-color:color-mix(in srgb,var(--fx-warn) 45%,transparent);background:color-mix(in srgb,var(--fx-warn) 8%,var(--fx-tile))}
+.fx-check.good{border-color:color-mix(in srgb,var(--fx-ok) 45%,transparent)}
+.fx-check .fx-sub{margin-top:2px;line-height:1.45}
+.fx-wi-sticky{position:sticky;top:-4px;z-index:3;background:var(--sheet,var(--bg));padding:4px 0}
+.fx-wi-grid{margin-top:10px;border-top:1px solid var(--fx-line);padding-top:8px}
+.fx-wi-row{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:6px;padding:5px 0;font-size:14px;align-items:baseline}
+.fx-wi-row>span:nth-child(2),.fx-wi-row>span:nth-child(3),.fx-wi-row>b{text-align:right}
+.fx-wi-row.head{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.fx-wi-chip{text-align:left;white-space:normal;line-height:1.25}
+.fx-wi-row span:first-child{color:var(--text)}

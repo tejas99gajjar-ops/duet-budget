@@ -23,7 +23,8 @@ if (params.get('seed') !== '0') {
 }
 if (params.get('fire') !== '0' && params.get('seed') !== '0') {
   const { samplePlan } = await import('/test/harness/sample-plan.js'); const { defaultPlan, normalizePlan } = await import('/js/fire/defaults.js');
-  const sid = (await be.fetchAll('spaces'))[0].id, plan = normalizePlan({ ...defaultPlan({ today: new Date().toISOString().slice(0, 10) }), ...samplePlan() });
+  let fromFile = null; if (params.get('real') === '1') { try { fromFile = (await (await fetch('/test/harness/_real.json')).json()).plan; } catch {} }   // local-only file with the household's own plan (git-ignored)
+  const sid = (await be.fetchAll('spaces'))[0].id, plan = normalizePlan({ ...defaultPlan({ today: new Date().toISOString().slice(0, 10) }), ...(fromFile || samplePlan()) });
   const row = { space_id: sid, name: plan.name }; for (const k of ['profile', 'incomes', 'spending', 'holdings', 'loans', 'insurance', 'events', 'goals', 'scenarios', 'assumptions', 'settings']) row[k] = plan[k];
   await be.insert('fire_plans', row);
 }

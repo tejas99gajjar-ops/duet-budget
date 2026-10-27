@@ -15,7 +15,7 @@ function simplePlan(patch = {}) {
   p.assumptions.inflation = { ...ZERO_INFL };
   p.assumptions.returns = { ...p.assumptions.returns, debt: 5, equity: 10 };
   p.assumptions.retirementAllocation = { debt: 100 };
-  p.assumptions.taxPct = 0; p.assumptions.redirectFreedEmi = false;
+  p.assumptions.taxPct = 0; p.assumptions.redirectFreedEmi = false; p.assumptions.investSurplus = false; p.assumptions.medicalMinSharePct = 0; p.assumptions.medicalAgeExtraPct = 0;   // hand-checkable: no extras
   p.spending = { currentMonthly: 0, categories: [], mapping: {}, retirement: { monthly: 10000, shares: { general: 1, medical: 0, education: 0, housing: 0 } }, oneOffsExcluded: [] };
   p.holdings = [{ id: 'h1', name: 'Equity', kind: 'mf', assetClass: 'equity', value: 1000000, returnPct: 10, sips: [] }];
   return Object.assign(p, patch);
@@ -159,4 +159,17 @@ test('tax gross-up raises withdrawals: 30% tax on 35% gain share = 10.5%', () =>
 test('"money runs out" age is reported after retirement', () => {
   const p = simplePlan(); p.holdings[0].value = 500000; p.holdings[0].returnPct = 0;
   const r = run(p); assert.ok(r.post.runsOutAge > 36 && r.post.runsOutAge < 66);
+});
+
+test('medical floor: a plan with no medical spending still reserves the minimum share, and it costs more than general spending', () => {
+  const p = simplePlan(); p.assumptions.inflation = { general: 6, medical: 10, education: 6, housing: 6 };
+  const a = run(p).target.total; p.assumptions.medicalMinSharePct = 10;
+  const b = run(p).target.total; assert.ok(b > a, `${b} should exceed ${a}`);
+  p.assumptions.medicalAgeExtraPct = 2; assert.ok(run(p).target.total > b, 'age escalator raises it further');
+});
+
+test('unrecorded-costs cushion lifts today\'s spending and the derived retirement need by the same percentage', () => {
+  const p = simplePlan(); p.spending.retirement = { monthly: null, shares: null }; p.spending.currentMonthly = 50000; p.spending.categories = [{ id: 'c', name: 'All', group: 'general', monthly: 50000 }];
+  const a = run(p); p.assumptions.unrecordedCostsPct = 10; const b = run(p);
+  near(b.target.monthlyToday, a.target.monthlyToday * 1.1, 1); assert.equal(b.meta.spendNow, 50000);   // what the person typed is still shown as typed
 });

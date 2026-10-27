@@ -1,4 +1,5 @@
 // Detail tab: Scenarios and sensitivity (method 3).
+import { openWhatIf } from './whatif.js';
 import { h, raw, IC, chip, tile, note, openForm, openInfo, toast, undoToast, sheet, confirmSheet } from './ui.js';
 import * as FS from './store.js';
 import * as X from './ctx.js';
@@ -46,7 +47,7 @@ export function scenariosTab(planRaw, resRaw) {
     ${ui.who !== 'household' ? h`<div class="fx-note"><span>ℹ️</span><div>Showing only this person's holdings and income. Spending, loans and goals stay household-wide.</div></div>` : ''}
     <div class="fx-note" style="border-style:solid"><span>🔀</span><div>Each scenario is a parallel universe: same starting pots, different life choices. Tap any to edit, or <button class="fx-link" data-act="cmp">${ui.compare ? 'stop comparing' : 'compare two'}</button>.</div></div>
     ${cmp.map(card)}
-    <button class="fx-add" data-act="new" style="border-radius:24px">${IC.plus}<span>Add custom scenario</span></button>
+    <button class="fx-add" data-act="new" style="border-radius:24px">${IC.plus}<span>Try a what-if / new scenario</span></button>
     ${ui.compare && sel.length === 2 ? h`<div class="fx-card"><h3>${sel[0].scenario.name} vs ${sel[1].scenario.name}</h3><div class="fx-scroll" style="margin-top:8px"><table class="fx-table"><thead><tr><th></th><th>${sel[0].scenario.name}</th><th>${sel[1].scenario.name}</th></tr></thead><tbody>
       ${[['Earliest age', (c) => c.earliestAge ?? '60+'], ['Income growth', (c) => `${c.incomeGrowth.toFixed(0)}%`], ['Retirement spend', (c) => `${inrC(c.retireMonthly)}/mo`], ['Corpus', (c) => inrC(C(c.corpus))], ['Target', (c) => inrC(C(c.target))], ['Gap', (c) => (c.gap > 0 ? `−${inrC(C(c.gap))}` : `+${inrC(C(-c.gap))}`)]].map(([l, f]) => h`<tr><td>${l}</td><td>${f(sel[0])}</td><td>${f(sel[1])}</td></tr>`)}</tbody></table></div>
       <div style="margin-top:12px">${multiLine(sel.map((c, i) => ({ ys: X.run({ scenarioId: c.scenario.id, retireAge: c.atAge }, plan).projection.rows.filter((r) => r.corpus != null).map((r) => C(r.corpus)), color: i ? 'var(--fx-warn)' : 'var(--fx)' })), X.run({}, plan).projection.rows.filter((r) => r.corpus != null).map((r) => String(r.year).slice(2)), { target: C(res.gap.target) })}<div class="fx-legend" style="margin-top:6px">${sel.map((c, i) => h`<span><i style="background:${i ? 'var(--fx-warn)' : 'var(--fx)'}"></i>${c.scenario.name}</span>`)}</div></div></div>` : ''}
@@ -59,7 +60,7 @@ export function scenariosTab(planRaw, resRaw) {
   return { body, after: { clicks: {
     who: (el) => { ui.who = el.dataset.k; ui.picked = []; X.redraw(); }, cmp: () => { ui.compare = !ui.compare; ui.picked = []; X.redraw(); },
     pickc: (el) => { const id = el.dataset.id; ui.picked = ui.picked.includes(id) ? ui.picked.filter((x) => x !== id) : [...ui.picked, id].slice(-2); X.redraw(); },
-    edit: (el) => { if (ui.compare) return el.closest('.fx-card').querySelector('[data-act=pickc]').click(); editScenario(el.dataset.id); }, new: () => editScenario(), newscen: () => editScenario(),
+    edit: (el) => { if (ui.compare) return el.closest('.fx-card').querySelector('[data-act=pickc]').click(); editScenario(el.dataset.id); }, new: () => openWhatIf(), newscen: () => openWhatIf(),
     use: (el) => { FS.edit('settings', (s) => { s.activeScenarioId = el.dataset.id; return s; }, { immediate: true }); toast('Scenario is now the current plan'); },
     cell: (el) => { FS.edit('settings', (s) => { s.activeScenarioId = el.dataset.s; s.retireAge = Number(el.dataset.a); return s; }, { immediate: true }); },
   }, changes: { lever: (el) => { ui.lever[Number(el.dataset.i)] = el.value; X.redraw(); } } } };

@@ -34,7 +34,8 @@ export function sectionHealth(plan, today = new Date().toISOString().slice(0, 10
   const noHealth = !ins.some((i) => i.kind === 'health'), toConfirm = ins.filter((i) => i.status === 'confirm');
   set('insurance', noHealth || toConfirm.length ? 'attn' : 'ok', ins.length ? `${inrC(cover)} total cover · ${inrC(prem)}/yr premium` : 'No policies added', noHealth ? 'No health insurance recorded' : `${toConfirm.length} to confirm`);
   const evMissing = plan.events.filter((e) => e.enabled !== false && ['baby', 'school', 'house', 'car', 'custom'].includes(e.kind) && !Number(e.cost) && !Number(e.annualCost));
-  set('events', evMissing.length ? 'attn' : 'ok', `${plan.events.length} ${plan.events.length === 1 ? 'event' : 'events'} on your timeline`, evMissing.length ? `${evMissing[0].name || 'An event'}: cost not confirmed` : '');
+  const evEst = plan.events.filter((e) => e.enabled !== false && e.estimate);
+  set('events', evMissing.length || evEst.length ? 'attn' : 'ok', `${plan.events.length} ${plan.events.length === 1 ? 'event' : 'events'} on your timeline`, evMissing.length ? `${evMissing[0].name || 'An event'}: cost not confirmed` : evEst.length ? `${evEst[0].name || 'An event'}: using an estimate, please confirm` : '');
   const A = plan.assumptions; set('assumptions', 'ok', `Inflation ${A.inflation.general}% · Equity ${A.returns.equity}% · SWR ${A.swr}%`);
   const list = SECTION_META.map(([id, label, icon, color]) => ({ ...out2[id], label, icon, color }));
   const done = list.filter((s) => s.status === 'ok').length;

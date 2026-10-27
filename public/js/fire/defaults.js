@@ -54,7 +54,11 @@ export const DEFAULT_ASSUMPTIONS = {
   bufferMonths: 6,
   includeFamilyFunds: true,
   includeHouse: false,
-  investSurplus: false,
+  investSurplus: false,          // true = money left over after spending, EMIs and SIPs is counted as saved too
+  unrecordedCostsPct: 0,         // cushion for yearly costs missing from a normal month
+  medicalMinSharePct: 8,         // minimum share of retirement spending reserved for healthcare
+  medicalAgeExtraPct: 1,       // extra yearly rise in medical costs after age 60
+  modelVersion: 2,
   redirectFreedEmi: true,
   lifestyleInflation: { on: false, pct: 2 },
   swrChoices: [3, 3.25, 3.5],
