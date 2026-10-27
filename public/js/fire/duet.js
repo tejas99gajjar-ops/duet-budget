@@ -87,7 +87,7 @@ export function proposals(plan, today) {
   // spending by bucket
   const cur = Object.fromEntries((plan.spending.categories || []).map((c) => [c.id, c]));
   for (const b of SPEND_BUCKETS) {
-    const to = rs(av.byBucket?.[b.id] || 0); const old = cur[b.id]; if (!to && !old) continue; if (old && old.source === 'manual') continue; if (old && rs(old.monthly) === to) continue;
+    const to = rs(av.byBucket?.[b.id] || 0); const old = cur[b.id]; if (!to) continue;   // nothing recorded in Duet is not the same as zero spending: never blank a number the person entered if (old && old.source === 'manual') continue; if (old && rs(old.monthly) === to) continue;
     out.push({ id: 'sp_' + b.id, group: 'Spending', label: b.name, from: old?.monthly ?? 0, to, apply: (p) => { const list = p.spending.categories; const i = list.findIndex((c) => c.id === b.id); const row = { id: b.id, name: b.name, icon: b.icon, group: b.group, color: b.color, monthly: to, source: 'duet' }; if (i >= 0) list[i] = { ...list[i], ...row }; else list.push(row); p.spending.currentMonthly = list.reduce((s, c) => s + (Number(c.monthly) || 0), 0); } });
   }
   // linked assets
