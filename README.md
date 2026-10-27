@@ -22,11 +22,18 @@ phone / laptop ──(HTML, JS: GitHub Pages, free)──► the app
 4. Publish free on GitHub Pages: create a GitHub repo, push this folder, then **Settings → Pages → Source: GitHub Actions**. The included workflow (`.github/workflows/pages.yml`) publishes `public/`. Your address will be `https://<you>.github.io/<repo>/`; set it as **Site URL** in Supabase → Authentication → URL Configuration.
 5. On Android Chrome open that address → menu → **Install app**.
 
+## FIRE planner (Dashboard → 🔥 FIRE Planner)
+A retirement planner inside the app. Everything is calculated on your device (no AI, no paid service). It reads your Duet income, spending, wallets and investments, and you can edit every input.
+- **Three methods:** exact year-by-year projection (target vs projected vs gap), Monte Carlo (thousands of random futures) and scenarios & sensitivity.
+- **Screens:** Overview · Detail (Target, Projection, Gap, Monte Carlo, Scenarios, *Show detailed calculation*) · Goals · Inputs (profile, income, spending, assets with SIPs and prices, loans, insurance, life events, assumptions) · Live (Duet vs plan) · Check-in (snapshots) · Settings (export JSON/CSV/Markdown/print, import, tags) · guided setup.
+- **One-time setup:** run `supabase/fire.sql` in the Supabase SQL Editor. It only *adds* two tables (`fire_plans`, `fire_snapshots`); your wallets, transactions and budgets are never touched. Until you run it the planner shows a setup screen with a Copy button.
+- Your plan is shared by everyone in the household and syncs live. Offline edits are kept on the device and sent later.
+
 ## Connect your friend
 Settings → **People** shows an invite code and a **Copy link** button. They open the link (or sign up and type the code) and share everything. The first person is the owner and can remove others.
 
 ## Tests
-`npm test` runs 25 tests: the SQL schema and its security rules in a real Postgres engine (PGlite), the browser-side API against that schema (including the offline queue), and a comparison with the original SQLite server for identical data. `npm run schema:check` runs extra security assertions. `node test/harness/serve.mjs` serves the real UI on an in-browser Postgres at http://localhost:3300 (no Supabase needed).
+`npm test` runs the tests (schema, security, offline queue, FIRE engine, Monte Carlo, FIRE storage): the SQL schema and its security rules in a real Postgres engine (PGlite), the browser-side API against that schema (including the offline queue), and a comparison with the original SQLite server for identical data. `npm run schema:check` runs extra security assertions. `node test/harness/serve.mjs` serves the real UI on an in-browser Postgres at http://localhost:3300 (no Supabase needed).
 
 ## Layout
 ```
@@ -34,7 +41,7 @@ public/        the whole app (this folder is what gets published)
   config.js    your Supabase URL + anon key (public by design)
   js/          core, auth, tx, money, analytics, settings, charts, app
                domain.js (all budget/analytics maths) · store.js (cache, offline queue, realtime) · local-api.js · backend.js (Supabase adapter)
-supabase/      schema.sql (tables, security rules, functions) + schema.check.mjs
+supabase/      fire.sql (FIRE planner tables, additive) · schema.sql (tables, security rules, functions) + schema.check.mjs
 test/          node:test suites + browser harness
 server.js, lib/  the previous self-hosted Node/SQLite version (kept for reference; `npm run legacy:server`)
 ```

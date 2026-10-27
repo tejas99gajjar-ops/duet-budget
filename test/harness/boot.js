@@ -1,8 +1,8 @@
 // Runs the REAL app UI against the REAL supabase/schema.sql inside an in-browser Postgres (PGlite). No network, no Supabase account.
 import { PGlite, types } from '/pglite/index.js';
 import { createDbWith, pgBackend } from '/test/pg-backend.js';
-const schema = await (await fetch('/supabase/schema.sql')).text();
-const db = await createDbWith(PGlite, types, schema);
+const schema = await (await fetch('/supabase/schema.sql')).text(), fireSql = await (await fetch('/supabase/fire.sql')).text();
+const db = await createDbWith(PGlite, types, schema, [fireSql]);
 const params = new URLSearchParams(location.search);
 const be = pgBackend(db, params.get('email') || 'demo@duet.local', params.get('name') || 'Tejas Gajjar');
 window.DUET_TEST_BACKEND = be; window.__db = db; window.__be = be;
@@ -20,5 +20,11 @@ if (params.get('seed') !== '0') {
   await tx({ type: 'expense', amount_cents: 5490, category_id: cats['Food & Drinks'], date: mk(0), note: 'Dinner & drinks', tags: ['dinner'] });
   for (const [c, a] of [['Bills & Utilities', 130000], ['Food & Drinks', 45000], ['Groceries', 40000]]) await be.insert('budgets', { space_id: sid, category_id: cats[c], amount_cents: a, start_date: mk(Number(today.slice(8, 10)) - 1) });
   await be.insert('investments', { space_id: sid, symbol: 'AAPL', name: 'Apple', kind: 'stock', quantity: 12, cost_cents: 150000, price_cents: 16200, prev_price_cents: 15800 });
+}
+if (params.get('fire') !== '0' && params.get('seed') !== '0') {
+  const { samplePlan } = await import('/test/harness/sample-plan.js'); const { defaultPlan, normalizePlan } = await import('/js/fire/defaults.js');
+  const sid = (await be.fetchAll('spaces'))[0].id, plan = normalizePlan({ ...defaultPlan({ today: new Date().toISOString().slice(0, 10) }), ...samplePlan() });
+  const row = { space_id: sid, name: plan.name }; for (const k of ['profile', 'incomes', 'spending', 'holdings', 'loans', 'insurance', 'events', 'goals', 'scenarios', 'assumptions', 'settings']) row[k] = plan[k];
+  await be.insert('fire_plans', row);
 }
 await import('/js/app.js');

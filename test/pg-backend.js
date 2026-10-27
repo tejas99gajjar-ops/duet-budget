@@ -1,13 +1,14 @@
 // Test double for public/js/backend.js: the REAL supabase/schema.sql (tables, RLS, functions) running in PGlite,
 // with each call executed as the "authenticated" role for a given user id, like PostgREST would.
 // Environment-neutral (Node tests and the browser harness): callers pass in PGlite and the schema text.
-export async function createDbWith(PGlite, types, schemaSql) {
+export async function createDbWith(PGlite, types, schemaSql, extraSql = []) {
   const db = new PGlite({ parsers: { [types.DATE]: (v) => v, [types.TIME]: (v) => v, [types.TIMESTAMPTZ]: (v) => v, [types.NUMERIC]: (v) => Number(v) } });
   await db.exec(`create role anon nologin; create role authenticated nologin;
     create schema auth; create table auth.users(id uuid primary key default gen_random_uuid(), email text);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
     grant usage on schema auth to authenticated; grant usage on schema public to anon, authenticated; create publication supabase_realtime;`);
   await db.exec(schemaSql);
+  for (const sql of extraSql) await db.exec(sql);
   return db;
 }
 const IDENT = /^[a-z_]+$/;
