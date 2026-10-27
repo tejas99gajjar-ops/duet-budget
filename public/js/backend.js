@@ -36,9 +36,9 @@ export function createSupabaseBackend(cfg) {
     async update(table, match, patch) { let q = sb.from(table).update(patch); for (const [k, v] of Object.entries(match)) q = q.eq(k, v); const { data, error } = await q.select(); if (error) fail(error); if (!data.length) throw new Error('Not allowed or not found'); return data[0]; },
     async remove(table, match) { let q = sb.from(table).delete(); for (const [k, v] of Object.entries(match)) q = q.eq(k, v); const { error } = await q; if (error) fail(error); },
     async rpc(name, args = {}) { const { data, error } = await sb.rpc(name, args); if (error) fail(error); return data; },
-    subscribe(spaceId, onTable, onStatus) {
-      const ch = sb.channel('space-' + spaceId);
-      for (const t of TABLES) ch.on('postgres_changes', { event: '*', schema: 'public', table: t, filter: t === 'spaces' ? `id=eq.${spaceId}` : `space_id=eq.${spaceId}` }, () => onTable(t));
+    subscribe(spaceId, onTable, onStatus, tables = TABLES) {
+      const ch = sb.channel('space-' + spaceId + (tables === TABLES ? '' : '-' + tables.join('-')));
+      for (const t of tables) ch.on('postgres_changes', { event: '*', schema: 'public', table: t, filter: t === 'spaces' ? `id=eq.${spaceId}` : `space_id=eq.${spaceId}` }, () => onTable(t));
       ch.subscribe((status) => onStatus?.(status));
       return () => sb.removeChannel(ch);
     },
