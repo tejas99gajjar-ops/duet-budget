@@ -43,6 +43,7 @@ export async function dashboard(root) {
       <div class="row" style="margin-top:14px;align-items:stretch">
         <div class="inner grow"><div class="eyebrow">Income (this month)</div><div class="pos" style="font-size:18px;font-weight:700;margin-top:6px">${money(s.income_cents, { sign: true })}</div></div>
         <div class="inner grow"><div class="eyebrow">Expenses (this month)</div><div class="neg" style="font-size:18px;font-weight:700;margin-top:6px">${s.expense_cents ? '-' : ''}${money(s.expense_cents)}</div></div></div></div>
+    <a class="card row" href="#/fire" style="gap:14px;background:linear-gradient(135deg,color-mix(in srgb,#7C5FE6 30%,var(--card)),var(--card))"><span style="font-size:30px">🔥</span><span class="grow"><b style="font-size:16px">FIRE Planner</b><div class="muted small" style="margin-top:2px">Plan your path to financial independence</div></span><span class="dim">${I.chev}</span></a>
     <div class="card"><div class="row between" style="margin-bottom:14px"><h2>Active Budget Pacing</h2><a class="link" href="#/budgets">View Details →</a></div>
       ${b.overall ? h`<div class="col" style="gap:14px">${pace(b.overall, 'Overall Monthly Budget', '🕒')}${top.map((i) => pace(i, i.category?.name, i.category?.icon))}</div>`
         : h`<div class="empty" style="padding:8px"><span class="e">🎯</span>No budgets yet.<br><a class="link" href="#/budgets">Create your first budget</a></div>`}</div>

@@ -75,11 +75,11 @@ export async function createPlan(plan = null, name) {
 
 // ---- editing: change a section, remember the old value for Undo, save shortly after ----
 fs.timers = new Map();
-export function edit(section, fn, { immediate = false, label = '' } = {}) {
+export function edit(section, fn, { immediate = false, label = '', noUndo = false } = {}) {
   const old = clone(fs.plan[section]);
   const next = fn(clone(fs.plan[section]));
   fs.plan[section] = next === undefined ? fs.plan[section] : next;
-  fs.history.push({ section, old, label }); if (fs.history.length > 30) fs.history.shift();
+  if (!noUndo) { fs.history.push({ section, old, label }); if (fs.history.length > 30) fs.history.shift(); }
   fs.pending.add(section); persistCache(); emit('edit');
   clearTimeout(fs.timers.get(section)); fs.timers.set(section, setTimeout(() => flush().catch(() => {}), immediate ? 0 : 500));
   return fs.plan[section];

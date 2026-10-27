@@ -13,7 +13,8 @@ export const birthYearOf = (p, baseYear) => (p.dob ? Number(String(p.dob).slice(
 export const holdingValue = (h) => Number(h.value ?? (Number(h.units) || 0) * (Number(h.price) || 0)) || 0;
 export const STATUS = (pct) => (pct >= 1.2 ? 'ahead' : pct >= 1 ? 'on-track' : 'behind');
 
-export const allScenarios = (plan) => [...BUILTIN_SCENARIOS, ...(plan.scenarios || [])];
+/** Built-in scenarios (a saved copy with the same id overrides the built-in), then your own. */
+export const allScenarios = (plan) => { const own = plan.scenarios || [], ids = new Set(BUILTIN_SCENARIOS.map((b) => b.id)); return [...BUILTIN_SCENARIOS.map((b) => own.find((o) => o.id === b.id) || b), ...own.filter((o) => !ids.has(o.id))]; };
 export const scenarioOf = (plan, id) => allScenarios(plan).find((s) => s.id === id) || BUILTIN_SCENARIOS.find((s) => s.id === 'base');
 
 function effAssumptions(A, ov) {
@@ -36,7 +37,11 @@ export const emiFor = (principal, annualPct, months) => {
   if (months <= 0) return 0; const r = annualPct / 1200;
   return r === 0 ? principal / months : (principal * r) / (1 - Math.pow(1 + r, -months));
 };
-/** Balance when the EMI starts (interest accrues during a moratorium), EMI, end month, total interest, yearly balances. */
+/**
+ * Loan maths. Interest accrues during a moratorium (a smaller payment is made), then the EMI repays it.
+ * An optional prepayment ({amount, frequency:'monthly'|'yearly', start}) shortens the loan.
+ * Returns the month-by-month payments (flows) from the loan's start month.
+ */
 export function loanProjection(loan, today = new Date().toISOString().slice(0, 10)) {
   const t = ym(today); const planned = loan.status === 'planned' && ym(loan.startDate);
   const start = planned && ymIdx(planned) > ymIdx(t) ? planned : t;
@@ -44,18 +49,24 @@ export function loanProjection(loan, today = new Date().toISOString().slice(0, 1
   const principal = Number(planned ? loan.principal : loan.outstanding ?? loan.principal) || 0;
   const es = ym(loan.emiStart); const emiStart = es && ymIdx(es) > ymIdx(start) ? es : start;
   const m0 = ymIdx(emiStart) - ymIdx(start), pre = Number(loan.currentPayment ?? loan.emi ?? 0) || 0;
-  let bal = principal; for (let k = 0; k < m0; k++) bal = bal * (1 + r) - pre;
-  bal = Math.max(0, bal);
-  let emi = Number(loan.emi) || 0, months = 0;
-  if (loan.endDate && ym(loan.endDate)) { months = Math.max(0, ymIdx(ym(loan.endDate)) - ymIdx(emiStart) + 1); if (!emi && months) emi = emiFor(bal, Number(loan.ratePct) || 0, months); }
-  else if (Number(loan.tenureMonths) && !loan.emi) { months = Number(loan.tenureMonths); emi = emiFor(bal, Number(loan.ratePct) || 0, months); }
-  else if (emi) { months = Math.ceil(nper(r, emi, bal) - 1e-7); if (!Number.isFinite(months)) months = 600; }
-  months = Math.min(months, 600);
+  let bal = principal; const flows = [];
+  for (let k = 0; k < m0; k++) { bal = bal * (1 + r) - pre; flows.push(pre); }
+  bal = Math.max(0, bal); const balanceAtEmiStart = bal;
+  let emi = Number(loan.emi) || 0;
+  if (loan.endDate && ym(loan.endDate)) { const n = Math.max(0, ymIdx(ym(loan.endDate)) - ymIdx(emiStart) + 1); if (!emi && n) emi = emiFor(bal, Number(loan.ratePct) || 0, n); }
+  else if (Number(loan.tenureMonths) && !loan.emi) emi = emiFor(bal, Number(loan.ratePct) || 0, Number(loan.tenureMonths));
+  const pp = loan.prepay && Number(loan.prepay.amount) > 0 ? loan.prepay : null, pstart = (pp && ym(pp.start)) || emiStart;
+  let interest = 0, cur = emiStart, months = 0; const schedule = [];
+  while (emi > 0 && bal > 0.5 && months < 600) {
+    const i = bal * r; let pay = Math.min(emi, bal + i), extra = 0;
+    if (pp && ymIdx(cur) >= ymIdx(pstart) && (pp.frequency !== 'yearly' || cur.m === pstart.m)) extra = Math.min(Number(pp.amount), Math.max(0, bal + i - pay));
+    bal = bal + i - pay - extra; if (bal < 0) bal = 0; interest += i; flows.push(pay + extra); months++;
+    if (cur.m === 12 || bal <= 0.5) schedule.push({ year: cur.y, balance: bal });
+    cur = addM(cur, 1);
+  }
   const endYM = months ? addM(emiStart, months - 1) : addM(emiStart, -1);
-  let interest = 0, b = bal, cur = emiStart; const schedule = [];
-  for (let k = 0; k < months; k++) { interest += b * r; b = Math.max(0, b * (1 + r) - emi); if (cur.m === 12 || k === months - 1) schedule.push({ year: cur.y, balance: b }); cur = addM(cur, 1); }
-  return { startYM: start, emiStartYM: emiStart, balanceAtEmiStart: bal, emi, months, end: ymStr(endYM), endYM, interest, moratoriumMonths: m0, currentPayment: pre,
-    totalPaid: emi * months + pre * m0, monthsLeft: m0 + months, schedule };
+  return { startYM: start, emiStartYM: emiStart, balanceAtEmiStart, emi, months, end: ymStr(endYM), endYM, interest, moratoriumMonths: m0, currentPayment: pre, flows,
+    totalPaid: flows.reduce((s, x) => s + x, 0), monthsLeft: m0 + months, schedule };
 }
 
 export function goalDate(g, plan, baseYear) {
@@ -138,10 +149,7 @@ export function buildModel(planIn, opts = {}) {
     if (loan.status === 'closed') continue;
     const lp = loanProjection(loan, today); const redirect = loan.redirectFreed !== false && A.redirectFreedEmi !== false;
     const nominalY = new Float64Array(nYears);
-    for (let k = 0; k < lp.moratoriumMonths + lp.months; k++) {
-      const at = addM(lp.startYM, k), i = at.y - baseYear; if (i < 0 || i >= nYears) continue;
-      nominalY[i] += k < lp.moratoriumMonths ? lp.currentPayment : lp.emi;
-    }
+    lp.flows.forEach((amt, k) => { const at = addM(lp.startYM, k), i = at.y - baseYear; if (i >= 0 && i < nYears) nominalY[i] += amt; });
     for (let i = 0; i < nYears; i++) loanReal[i] += nominalY[i] / Math.pow(1 + infl, tmid(baseYear + i));
     loanInfo.push({ id: loan.id, name: loan.name, emi: lp.emi, end: lp.end, endYM: lp.endYM, months: lp.months, redirect });
     if (redirect && lp.months) for (let i = 0; i < nYears; i++) { const y = baseYear + i; if (y > lastPre) break; const mths = monthsActive(y, addM(lp.endYM, 1), { y: lastPre, m: 12 }); if (mths) freedReal[i] += (lp.emi * mths) / Math.pow(1 + infl, tmid(y)); }
@@ -230,6 +238,10 @@ export function buildModel(planIn, opts = {}) {
   retMonthly = Math.max(0, retMonthly * (ov.retireSpendFactor ?? 1) - (ov.spendCutMonthly || 0));
   let shares = plan.spending.retirement?.shares;
   if (!shares) { const t = sum(nonEdu.map((c) => Number(c.monthly) || 0)); shares = t ? Object.fromEntries(GROUPS.map((g) => [g, sum(nonEdu.filter((c) => c.group === g).map((c) => Number(c.monthly) || 0)) / t])) : { general: 0.85, medical: 0.1, housing: 0.05, education: 0 }; }
+  // housing choice in retirement: keep renting (default), own the house (only upkeep, 25% of rent), or a custom monthly amount
+  const hs = plan.spending.housing;
+  if (hs === 'own') shares = { ...shares, housing: (shares.housing || 0) * 0.25 };
+  else if (hs === 'custom' && retMonthly > 0) shares = { ...shares, housing: Math.min(1, (Number(plan.spending.housingMonthly) || 0) / retMonthly) };
   const wTot = sum(Object.values(A.retirementAllocation)) || 100;
   const allocW = Object.fromEntries(Object.entries(A.retirementAllocation).map(([c, w]) => [c, w / wTot]));
   const retNom = sum(Object.entries(allocW).map(([c, w]) => w * A.returns[c]));

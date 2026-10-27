@@ -46,3 +46,6 @@ scrypt password hashing, 256-bit random session tokens (stored hashed), HttpOnly
 
 ## Out of scope (deliberately)
 Bank-feed sync, multi-currency conversion, receipts/photos, CSV import, native Android build (the PWA installs to the home screen).
+
+## FIRE planner
+Real (today's rupee) year-by-year engine: target corpus = present value of each retirement year's spending (+ premiums and events, − passive income, tax grossed up) at the real retirement return; projected corpus = holdings grown at their own real return plus SIPs (with step-ups), goal earmarks and cash-flow deficits drawn from the corpus; gap = target − projected. Monte Carlo uses a seeded generator with class-level market factors, random inflation, medical shocks and optional sequence-risk. Scenarios override assumptions. Plans are stored one per household in `fire_plans` (jsonb section columns) with dated copies in `fire_snapshots`. No network calls leave the device except normal Supabase sync. All text is estimates, not advice.

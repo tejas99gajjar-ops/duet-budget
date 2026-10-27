@@ -69,3 +69,11 @@ test('success rises with retirement age and 10,000 paths run in a few seconds', 
 test('seeded generator is uniform enough', () => {
   const r = rng(42); let s = 0; for (let i = 0; i < 100000; i++) s += r(); assert.ok(Math.abs(s / 100000 - 0.5) < 0.01);
 });
+
+test('a market crash early in retirement lowers success; flexible spending recovers some of it', () => {
+  const p = plan(2300000); const base = runMonteCarlo(M(p), { ...quiet, paths: 2000 });
+  const crash = runMonteCarlo(M(p), { ...quiet, paths: 2000, crash: { size: 30, years: 2 } });
+  assert.ok(crash.success < base.success, `crash ${crash.success} vs base ${base.success}`);
+  const flex = runMonteCarlo(M(p), { ...quiet, paths: 2000, crash: { size: 30, years: 2 }, rule: 'flexible', flexCut: 20, flexTrigger: -5 });
+  assert.ok(flex.success >= crash.success, `flexible ${flex.success} vs fixed ${crash.success}`);
+});

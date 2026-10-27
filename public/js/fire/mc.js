@@ -43,7 +43,7 @@ function prepare(m, mc) {
  * mc = { paths, seed, equityVol, includeEvents, sequenceRisk }
  */
 export function runMonteCarlo(m, mcIn = {}, onProgress) {
-  const mc = { paths: 10000, seed: 1, includeEvents: true, sequenceRisk: true, equityVol: null, ...mcIn };
+  const mc = { paths: 10000, seed: 1, includeEvents: true, sequenceRisk: true, equityVol: null, rule: 'fixed', flexCut: 10, flexTrigger: -5, crash: null, ...mcIn };
   const t0 = Date.now(), P = prepare(m, mc), rand = rng(mc.seed), z = normalGen(rand);
   const { nPre, n } = P, K = CLASSES.length, rows = P.target.rows, nPost = rows.length;
   const inflSd = (m.A.inflationVol ?? 1.5) / 100, relSd = 0.01, infl = m.infl;
@@ -77,12 +77,14 @@ export function runMonteCarlo(m, mcIn = {}, onProgress) {
     if (nPost) {
       for (let j = 0; j < nPost; j++) { draw(z(), z() * inflSd); let r = 0; for (const [k, w] of retWeights) r += w * rr[k]; portSeries[j] = r; }
       if (!mc.sequenceRisk) { let lg = 0; for (let j = 0; j < nPost; j++) lg += Math.log(1 + portSeries[j]); const g = Math.exp(lg / nPost) - 1; for (let j = 0; j < nPost; j++) portSeries[j] = g; }
+      if (mc.crash) for (let j = 0; j < Math.min(nPost, mc.crash.years || 2); j++) portSeries[j] = -Math.abs(mc.crash.size) / 100;   // stress test: forced losses in the first retirement years
       let medX = 1, eduX = 1, houX = 1;
       for (let j = 0; j < nPost; j++) {
         const row = rows[j], y = row.year; medX *= 1 + relSd * z(); eduX *= 1 + relSd * z(); houX *= 1 + relSd * z();
         let spend = row.byGroup.general + row.byGroup.medical * medX + row.byGroup.education * eduX + row.byGroup.housing * houX + row.premiums + row.events - row.passive;
         if (shockP && rand() < shockP) spend += Math.exp(Math.log(shockMedian) + 0.7 * z()) * m.rGroup('medical', y);
-        const w = Math.max(0, spend) * m.grossUp;
+        let w = Math.max(0, spend) * m.grossUp;
+        if (mc.rule === 'flexible' && j > 0 && portSeries[j - 1] < mc.flexTrigger / 100) w *= 1 - mc.flexCut / 100;   // tighten spending after a bad year
         if (!failed) { C = (C - w) * (1 + portSeries[j]); if (C < 0) { failed = true; failAge = row.age; C = 0; } }
         if (store) { const col = y - m.baseYear + 1; if (col <= n) fan[base + col] = failed ? 0 : C; }
       }
@@ -99,7 +101,7 @@ export function runMonteCarlo(m, mcIn = {}, onProgress) {
   return { paths: mc.paths, seed: mc.seed, success: ok / mc.paths, successes: ok, retireAge: m.retireAge, retireYear: m.retireYear, horizonAge: m.horizonAge,
     corpusAtRetirement: { p10: pct(sorted, 0.1), p25: pct(sorted, 0.25), p50: pct(sorted, 0.5), p75: pct(sorted, 0.75), p90: pct(sorted, 0.9) }, target: P.target.total,
     fan: { years, ages: years.map((y) => y - m.birth), p10: colsP(0.1), p25: colsP(0.25), p50: colsP(0.5), p75: colsP(0.75), p90: colsP(0.9) }, failHistogram: hist, medianFailAge: medFail,
-    settings: { sequenceRisk: mc.sequenceRisk, includeEvents: mc.includeEvents, equityVol: P.vol[P.idx.equity] * 100 }, ms: Date.now() - t0 };
+    settings: { sequenceRisk: mc.sequenceRisk, includeEvents: mc.includeEvents, equityVol: P.vol[P.idx.equity] * 100, rule: mc.rule, crash: mc.crash }, ms: Date.now() - t0 };
 }
 
 /** Success probability for each retirement age (smaller runs so it stays quick). */

@@ -11,6 +11,9 @@
 6. **Project Settings → API**: copy **Project URL** and the **anon public** key. Give those two to me.
 7. **Authentication → URL Configuration**: once the app has a web address (step below), set **Site URL** to it.
 
+## FIRE planner tables (one more query)
+Open **SQL Editor → New query**, paste all of `supabase/fire.sql` (or tap **Copy setup SQL** on the planner's setup screen) and **Run**. It adds `fire_plans` and `fire_snapshots` with the same household-only security rules. It can be run more than once safely and does not change any existing table or row.
+
 ## Free web hosting for the app files (GitHub Pages)
 1. Create a GitHub repo (can be private only on paid plans; public is fine: it contains no secrets, the anon key is public by design) and push this `duet/` folder.
 2. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**. The workflow `.github/workflows/pages.yml` publishes `public/` on every push.
