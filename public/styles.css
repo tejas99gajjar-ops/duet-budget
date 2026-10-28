@@ -112,3 +112,14 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 
 html{overscroll-behavior-y:none}
 @media(max-width:360px){#view{padding-left:12px;padding-right:12px}.big{font-size:30px}.g5{grid-template-columns:repeat(4,1fr)}}
+
+/* section switcher: Budget | FIRE (shared by every top-level screen of both sections) */
+#appsw{position:sticky;top:0;z-index:40;padding:calc(8px + env(safe-area-inset-top)) 16px 8px;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(14px)}
+#appsw[hidden]{display:none}
+#appsw+#view{padding-top:8px}
+.appsw-in{display:flex;align-items:center;justify-content:space-between;gap:10px;max-width:480px;margin:0 auto}
+.appsw-seg{display:flex;background:var(--card);border:1px solid var(--line,rgba(127,127,127,.25));border-radius:16px;padding:3px;gap:2px}
+.appsw-seg a{padding:8px 14px;border-radius:13px;font-weight:800;font-size:14px;color:var(--dim);white-space:nowrap}
+.appsw-seg a.on{background:var(--accent);color:#fff}
+.appsw-help{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:14px;border:1px solid var(--line,rgba(127,127,127,.25));font-weight:800;font-size:14px;color:var(--text)}
+#appsw[data-sec=fire] .appsw-seg a.on{background:#7C5FE6}

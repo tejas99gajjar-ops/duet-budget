@@ -27,6 +27,7 @@ A retirement planner inside the app. Everything is calculated on your device (no
 - **Three methods:** exact year-by-year projection (target vs projected vs gap), Monte Carlo (thousands of random futures) and scenarios & sensitivity.
 - **Screens:** Overview · Detail (Target, Projection, Gap, Monte Carlo, Scenarios, *Show detailed calculation*) · Goals · Inputs (profile, income, spending, assets with SIPs and prices, loans, insurance, life events, assumptions) · Live (Duet vs plan) · Check-in (snapshots) · Settings (export JSON/CSV/Markdown/print, import, tags) · guided setup.
 - **One-time setup:** run `supabase/fire.sql` in the Supabase SQL Editor. It only *adds* two tables (`fire_plans`, `fire_snapshots`); your wallets, transactions and budgets are never touched. Until you run it the planner shows a setup screen with a Copy button.
+- **Guide** (the ? button): a glossary of 40+ terms with everyday analogies and live values from your plan, where every number comes from, the colour meanings, a step-by-step *How it works*, and a list of the assumptions that matter most for you. Any underlined word in the planner opens its explanation. The Overview has a Simple view for showing it to someone new.
 - Your plan is shared by everyone in the household and syncs live. Offline edits are kept on the device and sent later.
 
 ## Connect your friend

@@ -1,4 +1,5 @@
 import { state, loadBoot, h, html, toast, sheetOpen, pref, setPref, applyTheme } from './core.js';
+import { renderSwitcher } from './switcher.js';
 import { createSupabaseBackend } from './backend.js';
 import * as S from './store.js';
 import * as auth from './auth.js';
@@ -18,7 +19,7 @@ const routes = [
   ['transactions', tx.list, { live: true, noNav: true }], ['tx/new', tx.form, { noNav: true }], ['tx/:id/edit', tx.form, { noNav: true }],
   ['tx/:id', tx.detail, { live: true, noNav: true }], ['settings', settings.main, { live: true, tab: '' }], ['profile', settings.profile, { noNav: true }],
   ['activity', settings.activity, { live: true, noNav: true }], ['recurring', settings.recurring, { live: true, noNav: true }],
-  ['fire(?:/(?<rest>.*))?', (root, params) => import('./fire/index.js').then((m) => m.fireRoute(root, params)), { noNav: true }],   // FIRE planner: loaded on demand
+  ['fire(?:/(?<rest>.*))?', (root, params) => import('./fire/index.js').then((m) => m.fireRoute(root, params)), { noNav: true, section: 'fire' }],   // FIRE planner: loaded on demand
 ].map(([p, fn, opts]) => ({ re: new RegExp('^' + p.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn, ...opts }));
 
 function parseHash() {
@@ -45,6 +46,7 @@ async function render({ keepScroll = false } = {}) {
   current = r;
   const root = fresh(), showNav = !r.public && !r.setup && !r.noNav && r.tab !== undefined;
   nav.hidden = !showNav; root.classList.toggle('noNav', !showNav);
+  renderSwitcher(document.getElementById('appsw'), r.public || r.setup ? null : r.section === 'fire' ? 'fire' : showNav ? 'budget' : null, '#/' + path + (location.hash.includes('?') ? '?' + location.hash.split('?')[1] : ''));
   nav.querySelectorAll('a[data-tab]').forEach((a) => a.classList.toggle('on', a.dataset.tab === r.tab));
   html(root, h`<div class="spin">Loading…</div>`);
   try { await r.fn(root, { ...r.re.exec(path).groups, ...q }, afterAuth); }

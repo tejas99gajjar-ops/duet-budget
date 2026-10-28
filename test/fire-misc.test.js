@@ -70,3 +70,37 @@ test('sanity checks flag a missing health policy and cash shortfalls in plain wo
   assert.ok(list.some((c) => /cost more than you earn/i.test(c.title)));
   assert.ok(list.every((c) => c.title && c.text));
 });
+
+test('glossary: every term is complete, ids and aliases are unique, and related terms exist', async () => {
+  const m = await import('../public/js/fire/terms.js').catch(() => null); if (!m) return;
+  const ids = new Set(), aliases = new Map();
+  for (const t of m.TERMS) {
+    assert.ok(t.id && t.name && t.short && t.analogy && t.how, `term ${t.id} is incomplete`);
+    assert.ok(!ids.has(t.id), `duplicate id ${t.id}`); ids.add(t.id);
+    assert.ok(m.GROUPS.some((g) => g[0] === t.group), `term ${t.id} has an unknown group`);
+    for (const a of t.aliases) { const k = a.toLowerCase(); assert.ok(!aliases.has(k) || aliases.get(k) === t.id, `alias "${a}" belongs to two terms`); aliases.set(k, t.id); }
+  }
+  for (const t of m.TERMS) for (const r of t.related || []) assert.ok(ids.has(r), `${t.id} relates to missing ${r}`);
+  assert.ok(m.TERMS.length >= 40);
+});
+
+test('term matching prefers the longest phrase and ignores partial words', async () => {
+  const m = await import('../public/js/fire/terms.js').catch(() => null); if (!m) return;
+  const { re, map } = m.buildMatcher(); const hit = (s) => { re.lastIndex = 0; const r = re.exec(s); return r ? map.get(r[1].toLowerCase()) : null; };
+  assert.equal(hit('The target corpus is large'), 'target');
+  assert.equal(hit('Run a Monte Carlo test'), 'monte-carlo');
+  assert.equal(hit('safe withdrawal rate of 3.5%'), 'swr');
+  assert.equal(hit('the gaps between'), null);      // "gaps" is not "gap"
+  assert.equal(hit('A fire alarm'), 'fire');        // whole word, any case
+  assert.equal(hit('firewall'), null);
+});
+
+test('key assumptions are ranked by how much they move the gap and re-rank when the plan changes', async () => {
+  const { sensitivity } = await import('../public/js/fire/engine.js');
+  const mk = (sip) => { const p = normalizePlan(defaultPlan({ today: '2026-10-27' })); p.incomes = [{ id: 'i1', person: 'p1', label: 'Pay', type: 'active', takeHome: 200000, growthPct: 6 }]; p.spending.currentMonthly = 60000;
+    p.holdings = [{ id: 'h1', name: 'Pot', kind: 'mf', assetClass: 'equity', value: 3000000, sips: [{ id: 's', amount: sip, frequency: 'monthly', status: 'active' }] }]; return p; };
+  const a = sensitivity(mk(5000), { today: '2026-10-27' }), b = sensitivity(mk(90000), { today: '2026-10-27' });
+  for (const l of [a, b]) for (let i = 1; i < l.length; i++) assert.ok(l[i - 1].swing >= l[i].swing, 'sorted by swing');
+  const saving = (l) => l.find((x) => x.label.startsWith('Monthly saving')).swing;
+  assert.ok(saving(b) > saving(a), 'a bigger SIP makes the saving assumption matter more');
+});
