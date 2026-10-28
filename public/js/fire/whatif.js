@@ -12,6 +12,9 @@ const sign = (v, u = '') => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}${
 export function openWhatIf(prefill = {}) {
   const plan = X.getPlan(), base = X.run(), now = base.meta, A = plan.assumptions, baseYear = now.baseYear;
   const people = plan.profile.people, partner = people[1];
+  // real figures everywhere: a rate is shown as the rate itself (12%), money as rupees, never as "points" or "percent of something"
+  const eq0 = A.returns.equity, infl0 = A.inflation.general, pay0 = A.salaryGrowth, sip0 = now.sipNow, spend0 = base.target.monthlyToday;
+  const pct = (v) => `${+Number(v).toFixed(1)}%`;
   const existing = plan.scenarios.find((s) => s.overrides?.partnerWorks)?.overrides.partnerWorks;
   const eventChips = plan.events.filter((e) => e.enabled !== false && (Number(e.cost) || Number(e.annualCost)) && e.kind !== 'work_stop').slice(0, 4);
   const st = { retireAge: prefill.retireAge ?? now.retireAge, extraMonthly: prefill.extraMonthly ?? 0, spendPct: prefill.spendPct ?? 0, equityDelta: prefill.equityReturnDeltaPct ?? 0, inflDelta: prefill.inflationDeltaPct ?? 0, incomeDelta: prefill.incomeGrowthDeltaPct ?? 0,
@@ -25,27 +28,34 @@ export function openWhatIf(prefill = {}) {
 
   // one-tap changes: [label, is it on?, switch it on, switch it off]
   const chips = [
-    ['⏩ Retire 2 years later', () => st.retireAge === now.retireAge + 2, () => { st.retireAge = now.retireAge + 2; }, () => { st.retireAge = now.retireAge; }],
-    ['⏪ Retire 2 years earlier', () => st.retireAge === now.retireAge - 2, () => { st.retireAge = now.retireAge - 2; }, () => { st.retireAge = now.retireAge; }],
-    ['✂️ Spend 10% less when retired', () => st.spendPct === -10, () => { st.spendPct = -10; }, () => { st.spendPct = 0; }],
-    ['💰 Invest ₹10,000 more a month', () => st.extraMonthly === 10000, () => { st.extraMonthly = 10000; }, () => { st.extraMonthly = 0; }],
-    ['💰 Invest ₹25,000 more a month', () => st.extraMonthly === 25000, () => { st.extraMonthly = 25000; }, () => { st.extraMonthly = 0; }],
+    [`⏩ Retire at ${now.retireAge + 2}`, () => st.retireAge === now.retireAge + 2, () => { st.retireAge = now.retireAge + 2; }, () => { st.retireAge = now.retireAge; }],
+    [`⏪ Retire at ${now.retireAge - 2}`, () => st.retireAge === now.retireAge - 2, () => { st.retireAge = now.retireAge - 2; }, () => { st.retireAge = now.retireAge; }],
+    [`✂️ Spend ${inrC(spend0 * 0.9)} a month in retirement (now ${inrC(spend0)})`, () => st.spendPct === -10, () => { st.spendPct = -10; }, () => { st.spendPct = 0; }],
+    [`💰 Invest ${inrC(sip0 + 10000)} a month (now ${inrC(sip0)})`, () => st.extraMonthly === 10000, () => { st.extraMonthly = 10000; }, () => { st.extraMonthly = 0; }],
+    [`💰 Invest ${inrC(sip0 + 25000)} a month`, () => st.extraMonthly === 25000, () => { st.extraMonthly = 25000; }, () => { st.extraMonthly = 0; }],
     ...(partner ? [[`👩‍💼 ${partner.name || 'Partner'} earns ₹${pw.monthly.toLocaleString('en-IN')} a month from ${pw.startYear}`, () => !!st.partner, () => { st.partner = { ...pw }; }, () => { st.partner = null; }]] : []),
-    ['📈 Pay grows 2 points faster', () => st.incomeDelta === 2, () => { st.incomeDelta = 2; }, () => { st.incomeDelta = 0; }],
-    ['📉 Markets 3 points worse', () => st.equityDelta === -3, () => { st.equityDelta = -3; }, () => { st.equityDelta = 0; }],
-    ['🔥 Prices rise 2 points faster', () => st.inflDelta === 2, () => { st.inflDelta = 2; }, () => { st.inflDelta = 0; }],
+    [`📈 Your pay grows ${pct(pay0 + 2)} a year (now ${pct(pay0)})`, () => st.incomeDelta === 2, () => { st.incomeDelta = 2; }, () => { st.incomeDelta = 0; }],
+    [`📉 Equity returns fall to ${pct(eq0 - 3)} a year (now ${pct(eq0)})`, () => st.equityDelta === -3, () => { st.equityDelta = -3; }, () => { st.equityDelta = 0; }],
+    [`🔥 Inflation rises to ${pct(infl0 + 2)} a year (now ${pct(infl0)})`, () => st.inflDelta === 2, () => { st.inflDelta = 2; }, () => { st.inflDelta = 0; }],
     ...eventChips.map((e) => [`🚫 Skip: ${e.name}`, () => st.skip.has(e.id), () => st.skip.add(e.id), () => st.skip.delete(e.id)]),
   ];
   const label = () => {
     const parts = [];
-    if (st.retireAge !== now.retireAge) parts.push(`Retire at ${st.retireAge}`); if (st.spendPct) parts.push(`Spend ${sign(st.spendPct, '%')}`); if (st.extraMonthly) parts.push(`Invest +${inrC(st.extraMonthly)}`);
-    if (st.partner) parts.push(`${partner?.name || 'Partner'} works from ${st.partner.startYear}`); if (st.incomeDelta) parts.push(`Pay ${sign(st.incomeDelta, ' pts')}`); if (st.equityDelta) parts.push(`Markets ${sign(st.equityDelta, ' pts')}`);
-    if (st.inflDelta) parts.push(`Prices ${sign(st.inflDelta, ' pts')}`); for (const id of st.skip) parts.push(`No ${plan.events.find((e) => e.id === id)?.name || 'event'}`);
+    if (st.retireAge !== now.retireAge) parts.push(`Retire at ${st.retireAge}`); if (st.spendPct) parts.push(`Spend ${inrC(spend0 * (1 + st.spendPct / 100))}/mo`); if (st.extraMonthly) parts.push(`Invest ${inrC(sip0 + st.extraMonthly)}/mo`);
+    if (st.partner) parts.push(`${partner?.name || 'Partner'} works from ${st.partner.startYear}`); if (st.incomeDelta) parts.push(`Pay growth ${pct(pay0 + st.incomeDelta)}`); if (st.equityDelta) parts.push(`Equity ${pct(eq0 + st.equityDelta)}`);
+    if (st.inflDelta) parts.push(`Inflation ${pct(infl0 + st.inflDelta)}`); for (const id of st.skip) parts.push(`No ${plan.events.find((e) => e.id === id)?.name || 'event'}`);
     return parts.join(', ') || 'What-if';
   };
 
-  const slider = (key, lab, min, max, step, fmt, hint = '') => h`<div class="fx-f"><div class="fx-row fx-between"><label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--text);font-weight:700">${lab}</label><b data-v="${key}" class="pur">${fmt(st[key])}</b></div><input type="range" class="fx-slider" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${st[key]}" aria-label="${lab}">${hint ? h`<div class="fx-help">${hint}</div>` : ''}</div>`;
-  const fmts = { extraMonthly: (v) => `+${inr(v)}`, spendPct: (v) => sign(v, '%'), equityDelta: (v) => sign(v, ' pts'), inflDelta: (v) => sign(v, ' pts'), incomeDelta: (v) => sign(v, ' pts') };
+  // Sliders work in real figures. Each knows the plan's current value (base), shows base + change, and turns the figure back into a change when moved.
+  const SL = {
+    extraMonthly: { label: 'Total invested each month', min: sip0, max: sip0 + 150000, step: 1000, get: () => sip0 + st.extraMonthly, set: (v) => { st.extraMonthly = Math.max(0, Math.round(v - sip0)); }, fmt: (v) => inr(v), hint: `Now ${inr(sip0)}. The extra is assumed to come from earning more or spending less.` },
+    spendPct: { label: 'Monthly spending after retirement', min: Math.round(spend0 * 0.6 / 500) * 500, max: Math.round(spend0 * 1.4 / 500) * 500, step: 500, get: () => spend0 * (1 + st.spendPct / 100), set: (v) => { st.spendPct = spend0 ? (v / spend0 - 1) * 100 : 0; }, fmt: (v) => inr(v), hint: `Now ${inr(spend0)} a month, in today's money` },
+    equityDelta: { label: 'Equity return, a year', min: 4, max: 18, step: 0.5, get: () => eq0 + st.equityDelta, set: (v) => { st.equityDelta = +(v - eq0).toFixed(2); }, fmt: pct, hint: `Now ${pct(eq0)}` },
+    inflDelta: { label: 'Inflation, a year', min: 2, max: 12, step: 0.5, get: () => infl0 + st.inflDelta, set: (v) => { st.inflDelta = +(v - infl0).toFixed(2); }, fmt: pct, hint: `Now ${pct(infl0)}` },
+    incomeDelta: { label: 'Your pay growth, a year', min: 0, max: 15, step: 0.5, get: () => pay0 + st.incomeDelta, set: (v) => { st.incomeDelta = +(v - pay0).toFixed(2); }, fmt: pct, hint: `Now ${pct(pay0)}` },
+  };
+  const slider = (key) => { const c = SL[key]; return h`<div class="fx-f"><div class="fx-row fx-between"><label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--text);font-weight:700">${c.label}</label><b data-v="${key}" class="pur">${c.fmt(c.get())}</b></div><input type="range" class="fx-slider" data-k="${key}" min="${c.min}" max="${c.max}" step="${c.step}" value="${Math.min(c.max, Math.max(c.min, c.get()))}" aria-label="${c.label}"><div class="fx-help">${c.hint}</div></div>`; };
 
   const row = (l, a, b, better) => h`<div class="fx-wi-row"><span>${l}</span><span class="fx-sub">${a}</span><b class="${better == null ? '' : better ? 'ok' : 'bad'}">${b}</b></div>`;
   const result = () => {
@@ -61,8 +71,7 @@ export function openWhatIf(prefill = {}) {
     <div id="wi-chips">${chipsHtml()}</div>
     <button class="fx-link" data-act="fine" style="text-align:left">${st.open ? '▾' : '▸'} Fine-tune with sliders</button>
     ${st.open ? h`<div class="col" style="gap:14px"><div class="fx-f"><div class="fx-row fx-between"><label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--text);font-weight:700">Retirement age</label><div class="fx-step sm"><button data-act="age" data-d="-1" aria-label="Earlier">−</button><span class="n" data-v="retireAge">${st.retireAge}</span><button data-act="age" data-d="1" aria-label="Later">+</button></div></div></div>
-      ${slider('extraMonthly', 'Extra monthly saving', 0, 150000, 1000, fmts.extraMonthly, 'Funded by earning more or spending less, so it is not treated as a cash shortfall')}${slider('spendPct', 'Retirement spending', -40, 40, 1, fmts.spendPct, `Today ${inr(base.target.monthlyToday)} a month`)}
-      ${slider('equityDelta', 'Equity return', -5, 5, 0.5, fmts.equityDelta)}${slider('inflDelta', 'Inflation', -2, 3, 0.5, fmts.inflDelta)}${slider('incomeDelta', 'Income & saving growth', -5, 8, 0.5, fmts.incomeDelta)}</div>` : ''}
+      ${slider('extraMonthly')}${slider('spendPct')}${slider('equityDelta')}${slider('inflDelta')}${slider('incomeDelta')}</div>` : ''}
     <div class="fx-row" style="flex-wrap:wrap"><button class="fx-btn ghost" data-act="reset" style="flex:1 1 90px">Reset</button><button class="fx-btn ghost" data-act="save" style="flex:2 1 130px" ${changed() ? '' : 'disabled'}>Save as scenario</button><button class="fx-btn" data-act="apply" style="flex:2 1 130px" ${changed() ? '' : 'disabled'}>Apply to plan</button></div>`;
 
   let timer = null; const later = () => { clearTimeout(timer); timer = setTimeout(grid, 120); };
@@ -95,7 +104,7 @@ export function openWhatIf(prefill = {}) {
       } catch (e) { errToast(e); }
     },
   } });
-  s.el.addEventListener('input', (e) => { const k = e.target.dataset?.k; if (!k) return; st[k] = Number(e.target.value); const lab = s.el.querySelector(`[data-v="${k}"]`); if (lab && fmts[k]) lab.textContent = fmts[k](st[k]); upd(); });
+  s.el.addEventListener('input', (e) => { const k = e.target.dataset?.k; if (!k || !SL[k]) return; SL[k].set(Number(e.target.value)); const lab = s.el.querySelector(`[data-v="${k}"]`); if (lab) lab.textContent = SL[k].fmt(SL[k].get()); upd(); });
   later();
   return s;
 }

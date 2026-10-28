@@ -18,8 +18,15 @@ export function scopePlan(plan, who) {
   return { ...plan, profile: { ...plan.profile, people: [p, ...rest] }, holdings: plan.holdings.filter((x) => owner(x, 'owner')), incomes: plan.incomes.filter((x) => owner(x, 'person')) };
 }
 
-const LEVERS = { age: ['Retirement age', (v) => ({ retireAgeDelta: v }), [-2, 0, 2, 4, 6], (v) => `${v > 0 ? '+' : ''}${v} yrs`], save: ['Extra monthly saving', (v) => ({ extraMonthly: v }), [0, 10000, 20000, 40000, 60000], (v) => `+${inrC(v)}`],
-  spend: ['Retirement spending', (v) => ({ retireSpendFactor: 1 + v / 100 }), [-20, -10, 0, 10, 20], (v) => `${v > 0 ? '+' : ''}${v}%`], equity: ['Equity return', (v) => ({ equityReturnDeltaPct: v }), [-4, -2, 0, 2, 4], (v) => `${v > 0 ? '+' : ''}${v} pts`], infl: ['Inflation', (v) => ({ inflationDeltaPct: v }), [-1, 0, 1, 2, 3], (v) => `${v > 0 ? '+' : ''}${v} pts`] };
+// Each lever lists the real figures it tries (age, rupees, percentages), never abstract points. b = the plan's own current values.
+const baseVals = () => { const r = X.run(), A = X.getPlan().assumptions; return { age: r.meta.retireAge, sip: r.meta.sipNow, spend: r.target.monthlyToday, equity: A.returns.equity, infl: A.inflation.general }; };
+const pctS = (v) => `${+Number(v).toFixed(1)}%`;
+const LEVERS = { age: ['Retirement age', (v) => ({ retireAgeDelta: v }), [-2, 0, 2, 4, 6], (v, b) => `Age ${b.age + v}`], save: ['Monthly investing', (v) => ({ extraMonthly: v }), [0, 10000, 20000, 40000, 60000], (v, b) => inrC(b.sip + v)],
+  spend: ['Retirement spending', (v) => ({ retireSpendFactor: 1 + v / 100 }), [-20, -10, 0, 10, 20], (v, b) => `${inrC(b.spend * (1 + v / 100))}/mo`], equity: ['Equity return', (v) => ({ equityReturnDeltaPct: v }), [-4, -2, 0, 2, 4], (v, b) => pctS(b.equity + v)], infl: ['Inflation', (v) => ({ inflationDeltaPct: v }), [-1, 0, 1, 2, 3], (v, b) => pctS(b.infl + v)] };
+/** A plain-words summary of what a scenario changes, in real figures. */
+const ovText = (ov, b, A) => [ov.retireAge ? `Retire at ${ov.retireAge}` : null, ov.incomeGrowthDeltaPct ? `Pay growth ${pctS(A.salaryGrowth + ov.incomeGrowthDeltaPct)}` : null, ov.retireSpendFactor && ov.retireSpendFactor !== 1 ? `Retirement spending ${inrC(b.spend * ov.retireSpendFactor)}/mo` : null,
+  ov.equityReturnDeltaPct ? `Equity return ${pctS(b.equity + ov.equityReturnDeltaPct)}` : null, ov.inflationDeltaPct ? `Inflation ${pctS(b.infl + ov.inflationDeltaPct)}` : null, ov.sipFactor && ov.sipFactor !== 1 ? `Investing ${inrC(b.sip * ov.sipFactor)}/mo` : null, ov.extraMonthly ? `Investing ${inrC(b.sip + ov.extraMonthly)}/mo` : null,
+  ov.partnerWorks ? `Partner earns ${inrC(ov.partnerWorks.monthly)}/mo from ${ov.partnerWorks.startYear}` : null, ov.eventsOff ? 'No life events' : null].filter(Boolean).join(' · ');
 
 export function scenariosTab(planRaw, resRaw) {
   const plan = scopePlan(planRaw, ui.who), res = ui.who === 'household' ? resRaw : X.run({}, plan), C = (v) => X.conv(v, res), today = X.today();
@@ -32,7 +39,7 @@ export function scenariosTab(planRaw, resRaw) {
     const chipTxt = isActive && c.earliestAge ? `Age ${c.earliestAge} (det.) / ${mc != null ? Math.round(mc * 100) + '% MC' : '…'}` : c.earliestAge ? `Retire age ${c.earliestAge}` : 'Beyond 60';
     return h`<div class="fx-card ${isActive ? '' : ''}" style="${isActive ? 'border:2px solid var(--fx);' : ''}position:relative;overflow:visible">${isActive ? h`<span class="fx-chip pur" style="position:absolute;top:-12px;right:18px;background:var(--fx);color:#fff;font-weight:800;font-size:11px;letter-spacing:.06em">CURRENT PLAN</span>` : ''}
       <div class="fx-row" style="gap:12px;align-items:flex-start">${ui.compare ? h`<button class="fx-opt ${ui.picked.includes(sc.id) ? 'on' : ''}" data-act="pickc" data-id="${sc.id}" style="padding:6px 11px" aria-label="Compare ${sc.name}">${ui.picked.includes(sc.id) ? '✓' : '○'}</button>` : ''}
-        <button class="fx-row grow" data-act="edit" data-id="${sc.id}" style="gap:12px;text-align:left;align-items:flex-start"><span class="fx-ico" style="width:54px;height:54px;font-size:26px">${sc.icon}</span><span class="grow"><b style="font-size:20px;color:${col(sc.id)}">${sc.name}</b><div class="fx-sub">${sc.desc || ''}</div></span></button>
+        <button class="fx-row grow" data-act="edit" data-id="${sc.id}" style="gap:12px;text-align:left;align-items:flex-start"><span class="fx-ico" style="width:54px;height:54px;font-size:26px">${sc.icon}</span><span class="grow"><b style="font-size:20px;color:${col(sc.id)}">${sc.name}</b><div class="fx-sub">${sc.desc || ''}</div>${ovText(ov, baseVals(), plan.assumptions) ? h`<div class="fx-sub" style="margin-top:4px">${ovText(ov, baseVals(), plan.assumptions)}</div>` : ''}</span></button>
         <span class="fx-chip ${c.earliestAge ? (isActive ? 'warn' : 'ok') : 'bad'}" style="white-space:normal;text-align:center">${chipTxt}</span></div>
       <div class="fx-grid3" style="margin-top:14px">${tile('Income growth', `${c.incomeGrowth.toFixed(0)}% / yr`)}${tile('Retirement spend', `${inrC(c.retireMonthly)}/mo`)}${ov.equityReturnDeltaPct ? tile('Equity return', `${c.equityReturn.toFixed(0)}% / yr`) : tile(`Corpus at ${c.atAge}`, inrC(C(c.corpus)))}</div>
       <div class="fx-row" style="margin-top:12px;gap:12px"><div class="fx-bar grow" style="--fill:${fill}"><i style="width:${(mc ?? 0) * 100}%"></i></div><b style="color:${fill};min-width:92px;text-align:right">${mc != null ? `${Math.round(mc * 100)}% success` : 'calculating…'}</b></div>
@@ -40,10 +47,10 @@ export function scenariosTab(planRaw, resRaw) {
   };
   const sel = ui.picked.map((id) => cmp.find((c) => c.scenario.id === id)).filter(Boolean);
   const grid = cmp.map((c) => ages.map((a) => { const g = c.grid.find((x) => x.age === a); return { label: g ? (g.gap <= 0 ? `✓ ${inrC(-g.gap)}` : `−${inrC(g.gap)}`) : '—', tone: g ? (g.pct >= 1 ? 'ok' : g.pct >= 0.85 ? 'warn' : 'bad') : null, mark: c.earliestAge === a, attr: `data-act="cell" data-s="${c.scenario.id}" data-a="${a}"` }; }));
-  const sens = sensitivity(plan, { today }), imp = eventImpacts(plan, { today }), [la, lb] = ui.lever;
+  const sens = sensitivity(plan, { today }), imp = eventImpacts(plan, { today }), [la, lb] = ui.lever, bv = baseVals();
   const two = LEVERS[la][2].map((va) => LEVERS[lb][2].map((vb) => { const ov = { ...LEVERS[la][1](va), ...LEVERS[lb][1](vb) }; const ra = (ov.retireAgeDelta || 0); delete ov.retireAgeDelta; const r = X.run({ retireAge: m.retireAge + ra, overrides: { ...ov, ...(ov.extraMonthly ? {} : {}) } }, plan); return { label: r.gap.amount <= 0 ? '✓' : `−${inrC(r.gap.amount)}`, tone: r.gap.pct >= 1 ? 'ok' : r.gap.pct >= 0.85 ? 'warn' : 'bad' }; }));
   const body = h`
-    <div class="fx-seg">${[['household', 'Household'], ['you', plan.profile.people[0]?.name || 'You'], ['partner', planRaw.profile.people[1]?.name || 'Partner']].filter(([k]) => k !== 'partner' || planRaw.profile.people.length > 1).map(([k, l]) => h`<button class="${ui.who === k ? 'on' : ''}" data-act="who" data-k="${k}">${l}</button>`)}</div>
+    <div class="fx-seg">${[['household', 'Household'], ['you', planRaw.profile.people[0]?.name || 'You'], ['partner', planRaw.profile.people[1]?.name || 'Partner']].filter(([k]) => k !== 'partner' || planRaw.profile.people.length > 1).map(([k, l]) => h`<button class="${ui.who === k ? 'on' : ''}" data-act="who" data-k="${k}">${l}</button>`)}</div>
     ${ui.who !== 'household' ? h`<div class="fx-note"><span>ℹ️</span><div>Showing only this person's holdings and income. Spending, loans and goals stay household-wide.</div></div>` : ''}
     <div class="fx-note" style="border-style:solid"><span>🔀</span><div>Each scenario is a parallel universe: same starting pots, different life choices. Tap any to edit, or <button class="fx-link" data-act="cmp">${ui.compare ? 'stop comparing' : 'compare two'}</button>.</div></div>
     ${cmp.map(card)}
@@ -55,7 +62,7 @@ export function scenariosTab(planRaw, resRaw) {
 </div></div>
     <div class="fx-card"><h3>What moves the result</h3><div class="fx-sub" style="margin:4px 0 8px">Gap change when each lever moves. Green is a smaller gap.</div>${tornado(sens, res.gap.amount)}</div>
     <div class="fx-card"><h3>Two levers together</h3><div class="fx-row" style="gap:10px;margin:10px 0">${[0, 1].map((i) => h`<select class="fx-in" data-act="lever" data-i="${i}" style="padding:10px 12px;font-size:14px">${Object.entries(LEVERS).map(([k, v]) => h`<option value="${k}" ${ui.lever[i] === k ? raw('selected') : ''}>${v[0]}</option>`)}</select>`)}</div>
-      <div class="fx-scroll"><table class="fx-table"><thead><tr><th>${LEVERS[la][0]} ↓ / ${LEVERS[lb][0]} →</th>${LEVERS[lb][2].map((v) => h`<th>${LEVERS[lb][3](v)}</th>`)}</tr></thead><tbody>${LEVERS[la][2].map((va, i) => h`<tr><td>${LEVERS[la][3](va)}</td>${two[i].map((c) => h`<td class="${c.tone === 'ok' ? 'ok' : c.tone === 'warn' ? 'warn' : 'bad'}" style="font-weight:700">${c.label}</td>`)}</tr>`)}</tbody></table></div></div>
+      <div class="fx-scroll"><table class="fx-table"><thead><tr><th>${LEVERS[la][0]} ↓ / ${LEVERS[lb][0]} →</th>${LEVERS[lb][2].map((v) => h`<th>${LEVERS[lb][3](v, bv)}</th>`)}</tr></thead><tbody>${LEVERS[la][2].map((va, i) => h`<tr><td>${LEVERS[la][3](va, bv)}</td>${two[i].map((c) => h`<td class="${c.tone === 'ok' ? 'ok' : c.tone === 'warn' ? 'warn' : 'bad'}" style="font-weight:700">${c.label}</td>`)}</tr>`)}</tbody></table></div></div>
     ${imp.length ? h`<div class="fx-card"><h3>Life events, one by one</h3><div class="fx-sub" style="margin:4px 0 8px">Change in your retirement corpus because of each event.</div><div class="fx-list">${imp.map((x) => { const e = plan.events.find((y) => y.id === x.id); return h`<a class="fx-li" href="#/fire/inputs/events"><span style="font-size:20px">${e.icon || '📌'}</span><span class="grow"><b>${e.name || e.kind}</b></span><b class="${x.impact < -1 ? 'bad' : x.impact > 1 ? 'ok' : 'mut'}">${Math.abs(x.impact) < 1 ? 'no effect' : `${x.impact < 0 ? '−' : '+'}${inrC(C(Math.abs(x.impact)))}`}</b></a>`; })}</div></div>` : ''}`;
   return { body, after: { clicks: {
     who: (el) => { ui.who = el.dataset.k; ui.picked = []; X.redraw(); }, cmp: () => { ui.compare = !ui.compare; ui.picked = []; X.redraw(); },
@@ -69,20 +76,29 @@ export function scenariosTab(planRaw, resRaw) {
 /** Add or edit a scenario. A built-in one is saved as an override and can be reset to its default. */
 export function editScenario(id) {
   const plan = X.getPlan(), sc = id ? allScenarios(plan).find((s) => s.id === id) : null, ov = sc?.overrides || {}, builtin = id && BUILTIN_SCENARIOS.some((b) => b.id === id), isBase = id === 'base';
-  openForm({ title: sc ? `Edit ${sc.name}` : 'New scenario', sub: 'Changes are measured against your base plan.',
-    values: { name: sc?.name || '', icon: sc?.icon || '🎯', desc: sc?.desc || '', incomeGrowthDeltaPct: ov.incomeGrowthDeltaPct ?? 0, retireSpendPct: Math.round(((ov.retireSpendFactor ?? 1) - 1) * 100), equityReturnDeltaPct: ov.equityReturnDeltaPct ?? 0, inflationDeltaPct: ov.inflationDeltaPct ?? 0, sipPct: Math.round(((ov.sipFactor ?? 1) - 1) * 100), retireAge: ov.retireAge ?? null, eventsOff: !!ov.eventsOff, partner: !!ov.partnerWorks, pStart: ov.partnerWorks?.startYear ?? new Date().getFullYear() + 3, pMonthly: ov.partnerWorks?.monthly ?? 50000, pGrowth: ov.partnerWorks?.growthPct ?? 6 },
-    fields: [{ name: 'name', label: 'Name', type: 'text', required: true, maxlength: 30 }, { type: 'row', fields: [{ name: 'icon', label: 'Icon', type: 'text', maxlength: 4 }, { name: 'incomeGrowthDeltaPct', label: 'Income growth vs base', type: 'num', suffix: 'pts', min: -10, max: 10 }] },
-      { name: 'desc', label: 'Description', type: 'text', maxlength: 60 },
-      { type: 'row', fields: [{ name: 'retireSpendPct', label: 'Retirement spend vs base', type: 'pct', min: -60, max: 100 }, { name: 'sipPct', label: 'Monthly saving vs base', type: 'pct', min: -100, max: 200 }] },
-      { type: 'row', fields: [{ name: 'equityReturnDeltaPct', label: 'Equity return vs base', type: 'num', suffix: 'pts', min: -10, max: 6 }, { name: 'inflationDeltaPct', label: 'Inflation vs base', type: 'num', suffix: 'pts', min: -3, max: 5 }] },
+  const A = plan.assumptions, b = baseVals(), r2 = (v) => Math.round(v * 100) / 100;
+  // the form shows real figures (a rate, rupees a month); they are converted back to changes from your plan when saved
+  openForm({ title: sc ? `Edit ${sc.name}` : 'New scenario', sub: 'Enter the figures this scenario should use. Anything you leave at your own plan\'s value is unchanged.',
+    values: { name: sc?.name || '', icon: sc?.icon || '🎯', desc: sc?.desc || '', payGrowth: r2(A.salaryGrowth + (ov.incomeGrowthDeltaPct || 0)), spendMonthly: Math.round(b.spend * (ov.retireSpendFactor ?? 1)), equity: r2(A.returns.equity + (ov.equityReturnDeltaPct || 0)), infl: r2(A.inflation.general + (ov.inflationDeltaPct || 0)), sipMonthly: Math.round(b.sip * (ov.sipFactor ?? 1)), retireAge: ov.retireAge ?? null, eventsOff: !!ov.eventsOff, partner: !!ov.partnerWorks, pStart: ov.partnerWorks?.startYear ?? new Date().getFullYear() + 3, pMonthly: ov.partnerWorks?.monthly ?? 50000, pGrowth: ov.partnerWorks?.growthPct ?? 6 },
+    fields: [{ name: 'name', label: 'Name', type: 'text', required: true, maxlength: 30 }, { name: 'icon', label: 'Icon', type: 'text', maxlength: 4 }, { name: 'desc', label: 'Description', type: 'text', maxlength: 60 },
+      { name: 'payGrowth', label: 'Your pay growth, a year', type: 'pct', min: -5, max: 25, help: `Your plan: ${pctS(A.salaryGrowth)}` },
+      { name: 'spendMonthly', label: 'Monthly spending after retirement', type: 'money', min: 0, help: `Your plan: ${inrC(b.spend)} a month, in today's money` },
+      { name: 'sipMonthly', label: 'Total invested each month', type: 'money', min: 0, help: `Your plan: ${inrC(b.sip)} a month` },
+      { name: 'equity', label: 'Equity return, a year', type: 'pct', min: 0, max: 25, help: `Your plan: ${pctS(A.returns.equity)}` },
+      { name: 'infl', label: 'Inflation, a year', type: 'pct', min: 0, max: 15, help: `Your plan: ${pctS(A.inflation.general)}` },
       { name: 'retireAge', label: 'Fixed retirement age (optional)', type: 'num', min: 35, max: 70, help: 'Leave empty to find the earliest age that works' },
       { name: 'eventsOff', type: 'toggle', hint: 'Ignore all life events' }, { name: 'partner', type: 'toggle', hint: 'Partner earns in this scenario' },
-      { type: 'row', fields: [{ name: 'pStart', label: 'From year', type: 'num', show: (v) => v.partner }, { name: 'pMonthly', label: 'Monthly take-home', type: 'money', show: (v) => v.partner }] }, { name: 'pGrowth', label: 'Partner income growth', type: 'pct', show: (v) => v.partner }],
+      { type: 'row', fields: [{ name: 'pStart', label: 'From year', type: 'num', show: (v) => v.partner }, { name: 'pMonthly', label: 'Monthly take-home', type: 'money', show: (v) => v.partner }] }, { name: 'pGrowth', label: 'Partner income growth, a year', type: 'pct', show: (v) => v.partner }],
     cta: 'Save scenario',
     onDelete: sc && !isBase ? () => { FS.edit('scenarios', (l) => l.filter((x) => x.id !== id), { immediate: true }); undoToast(builtin ? 'Reset to default' : 'Scenario deleted', () => FS.undo()); } : null, deleteLabel: builtin ? 'Reset to default' : 'Delete scenario',
     onSave: (v) => {
-      const overrides = {}; if (v.incomeGrowthDeltaPct) overrides.incomeGrowthDeltaPct = v.incomeGrowthDeltaPct; if (v.retireSpendPct) overrides.retireSpendFactor = 1 + v.retireSpendPct / 100; if (v.equityReturnDeltaPct) overrides.equityReturnDeltaPct = v.equityReturnDeltaPct;
-      if (v.inflationDeltaPct) overrides.inflationDeltaPct = v.inflationDeltaPct; if (v.sipPct) overrides.sipFactor = 1 + v.sipPct / 100; if (v.retireAge) overrides.retireAge = v.retireAge; if (v.eventsOff) overrides.eventsOff = true;
+      const overrides = {}, near = (x, y) => Math.abs(x - y) < 0.005;
+      if (!near(v.payGrowth, A.salaryGrowth)) overrides.incomeGrowthDeltaPct = r2(v.payGrowth - A.salaryGrowth);
+      if (b.spend && Math.abs(v.spendMonthly - b.spend) > 1) overrides.retireSpendFactor = v.spendMonthly / b.spend;
+      if (!near(v.equity, A.returns.equity)) overrides.equityReturnDeltaPct = r2(v.equity - A.returns.equity);
+      if (!near(v.infl, A.inflation.general)) overrides.inflationDeltaPct = r2(v.infl - A.inflation.general);
+      if (b.sip && Math.abs(v.sipMonthly - b.sip) > 1) overrides.sipFactor = v.sipMonthly / b.sip;
+      if (v.retireAge) overrides.retireAge = v.retireAge; if (v.eventsOff) overrides.eventsOff = true;
       if (v.partner) overrides.partnerWorks = { startYear: Number(v.pStart), monthly: v.pMonthly, growthPct: v.pGrowth };
       const row = { id: sc?.id || uid('sc_'), name: v.name, icon: v.icon || '🎯', desc: v.desc, overrides, ...(builtin ? { builtin: true } : {}) };
       FS.edit('scenarios', (l) => (l.some((x) => x.id === row.id) ? l.map((x) => (x.id === row.id ? row : x)) : [...l, row]), { immediate: true });

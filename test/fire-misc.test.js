@@ -101,6 +101,6 @@ test('key assumptions are ranked by how much they move the gap and re-rank when 
     p.holdings = [{ id: 'h1', name: 'Pot', kind: 'mf', assetClass: 'equity', value: 3000000, sips: [{ id: 's', amount: sip, frequency: 'monthly', status: 'active' }] }]; return p; };
   const a = sensitivity(mk(5000), { today: '2026-10-27' }), b = sensitivity(mk(90000), { today: '2026-10-27' });
   for (const l of [a, b]) for (let i = 1; i < l.length; i++) assert.ok(l[i - 1].swing >= l[i].swing, 'sorted by swing');
-  const saving = (l) => l.find((x) => x.label.startsWith('Monthly saving')).swing;
+  const saving = (l) => l.find((x) => x.key === 'saving').swing;
   assert.ok(saving(b) > saving(a), 'a bigger SIP makes the saving assumption matter more');
 });

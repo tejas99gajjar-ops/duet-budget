@@ -2,6 +2,7 @@
 // Pure functions: plan JSON in, numbers out. No network, no AI.
 // Everything is in REAL terms (today's rupees) unless a field says "nominal"; real = nominal deflated by general inflation.
 import { CLASSES, GROUPS, KIND_DEFAULT_CLASS, BUILTIN_SCENARIOS, normalizePlan } from './defaults.js';
+import { inrC } from './format.js';
 
 const sum = (a) => a.reduce((s, x) => s + x, 0);
 const ym = (s) => { if (!s) return null; const [y, m] = String(s).split('-').map(Number); return y ? { y, m: m || 1 } : null; };
@@ -413,16 +414,17 @@ export const earliestAge = (rows) => rows.find((r) => r.gap <= 0)?.age ?? null;
 /** How much each lever moves the gap (tornado). */
 export function sensitivity(plan, opts = {}) {
   const base = runPlan(plan, opts).gap.amount; const ovBase = opts.overrides || {};
-  const lever = (label, lo, hi, unit) => { const g = (o, extra = {}) => gapOf(plan, { ...opts, ...extra, overrides: { ...ovBase, ...o } });
-    const a = lo.retireAge ? g({}, { retireAge: lo.retireAge }) : g(lo), b = hi.retireAge ? g({}, { retireAge: hi.retireAge }) : g(hi); return { label, unit, low: a, high: b, base, swing: Math.abs(a - b) }; };
-  const ra = runPlan(plan, opts).meta.retireAge;
+  // every lever is described with the real figures it moves between (for example "Equity return 10% to 14%"), never with abstract "points"
+  const lever = (key, name, range, lo, hi) => { const g = (o, extra = {}) => gapOf(plan, { ...opts, ...extra, overrides: { ...ovBase, ...o } });
+    const a = lo.retireAge ? g({}, { retireAge: lo.retireAge }) : g(lo), b = hi.retireAge ? g({}, { retireAge: hi.retireAge }) : g(hi); return { key, name, range, label: `${name} ${range}`, low: a, high: b, base, swing: Math.abs(a - b) }; };
+  const r0 = runPlan(plan, opts), ra = r0.meta.retireAge, A0 = plan.assumptions, sip = r0.meta.sipNow, spend = r0.target.monthlyToday, p = (v) => `${+Number(v).toFixed(1)}%`;
   return [
-    lever('Monthly saving ±20%', { sipFactor: 0.8 }, { sipFactor: 1.2 }, '±20%'),
-    lever('Retirement age ±2 years', { retireAge: ra - 2 }, { retireAge: ra + 2 }, '±2 yrs'),
-    lever('Equity return ±2 points', { equityReturnDeltaPct: -2 }, { equityReturnDeltaPct: 2 }, '±2 pts'),
-    lever('Retirement spending ±10%', { retireSpendFactor: 1.1 }, { retireSpendFactor: 0.9 }, '±10%'),
-    lever('Inflation ±1 point', { inflationDeltaPct: 1 }, { inflationDeltaPct: -1 }, '±1 pt'),
-    lever('Income growth ±2 points', { incomeGrowthDeltaPct: -2 }, { incomeGrowthDeltaPct: 2 }, '±2 pts'),
+    lever('saving', 'Monthly investing', `${inrC(sip * 0.8)} to ${inrC(sip * 1.2)}`, { sipFactor: 0.8 }, { sipFactor: 1.2 }),
+    lever('age', 'Retirement age', `${ra - 2} to ${ra + 2}`, { retireAge: ra - 2 }, { retireAge: ra + 2 }),
+    lever('equity', 'Equity return', `${p(A0.returns.equity - 2)} to ${p(A0.returns.equity + 2)}`, { equityReturnDeltaPct: -2 }, { equityReturnDeltaPct: 2 }),
+    lever('spend', 'Retirement spending', `${inrC(spend * 0.9)} to ${inrC(spend * 1.1)} a month`, { retireSpendFactor: 1.1 }, { retireSpendFactor: 0.9 }),
+    lever('inflation', 'Inflation', `${p(A0.inflation.general - 1)} to ${p(A0.inflation.general + 1)}`, { inflationDeltaPct: 1 }, { inflationDeltaPct: -1 }),
+    lever('income', 'Pay growth', `${p(A0.salaryGrowth - 2)} to ${p(A0.salaryGrowth + 2)}`, { incomeGrowthDeltaPct: -2 }, { incomeGrowthDeltaPct: 2 }),
   ].sort((a, b) => b.swing - a.swing);
 }
 
