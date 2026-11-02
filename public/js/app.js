@@ -85,7 +85,12 @@ function fitScreen() {
 }
 fitScreen(); addEventListener('resize', fitScreen); addEventListener('orientationchange', () => setTimeout(fitScreen, 200));
 
-if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // Always check for a newer app version, and when one takes over, reload once so the new screens appear without clearing anything by hand.
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => { reg.update().catch(() => {}); document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); }); }).catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !sessionStorage.getItem('duet.reloaded')) { sessionStorage.setItem('duet.reloaded', '1'); location.reload(); } });
+}
 
 (async function start() {
   S.configure(window.DUET_TEST_BACKEND || createSupabaseBackend(window.DUET_CONFIG)); // DUET_TEST_BACKEND is only set by test/harness
