@@ -1,5 +1,5 @@
 // App-shell cache so the app opens with no signal. Supabase calls (other origins) are never cached here.
-const CACHE = 'duet-shell-v14';
+const CACHE = 'duet-shell-v15';
 const SHELL = ['./', 'index.html', 'styles.css', 'theme.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'vendor/supabase.js',
   'js/app.js', 'js/core.js', 'js/charts.js', 'js/auth.js', 'js/tx.js', 'js/money.js', 'js/analytics.js', 'js/settings.js', 'js/dates.js', 'js/domain.js', 'js/store.js', 'js/backend.js', 'js/local-api.js',
   'fire.css', 'js/fire/index.js', 'js/fire/store.js', 'js/fire/ctx.js', 'js/fire/format.js', 'js/fire/ui.js', 'js/fire/charts.js', 'js/fire/engine.js', 'js/fire/defaults.js', 'js/fire/duet.js', 'js/fire/health.js', 'js/fire/actions.js', 'js/fire/whatif.js', 'js/fire/overview.js', 'js/fire/detail.js', 'js/fire/detail-mc.js', 'js/fire/detail-scen.js', 'js/fire/goals.js', 'js/fire/duetsync.js', 'js/fire/inputs.js', 'js/fire/inputs-spend.js', 'js/fire/inputs-assets.js', 'js/fire/inputs-fin.js', 'js/fire/live.js', 'js/fire/checkin.js', 'js/fire/settings.js', 'js/fire/wizard.js', 'js/fire/prices.js', 'js/fire/calc.js', 'js/fire/checks.js', 'js/fire/terms.js', 'js/fire/learn.js', 'js/switcher.js', 'js/pace.js', 'js/pace-ui.js', 'js/fire/io.js', 'js/fire/mc.js', 'js/fire/mc-worker.js'];

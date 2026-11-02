@@ -252,3 +252,30 @@ test('a note that repeats many times a month (groceries) is a habit, not a bill'
   const a = paceAnalysis({ categories: cat5, budgets: [], transactions: [tx('income', '2026-10-02', 18000000), tx('income', '2026-09-02', 18000000), ...groc('2026-09'), ...groc('2026-10'), ...groc('2026-11').slice(0, 2)] }, '2026-11-05');
   assert.equal(a.commit.items.length, 0);
 });
+
+// ---- the entries are the truth: dates and names come from what was really logged ---------------------------------------------------------------------
+test('payments follow the dates in the entries even when recurring rules say another day', () => {
+  const cats = [{ id: 2, name: 'Food' }, { id: 3, name: 'Loans' }, { id: 6, name: 'Electricity' }, { id: 5, name: 'Subscriptions' }];
+  const rows = [tx('income', '2026-10-02', 18000000), tx('income', '2026-09-02', 18000000), ...daily5('2026-09', 30), ...daily5('2026-10', 31),
+    ...['2026-09', '2026-10'].flatMap((m) => [tx('expense', `${m}-10`, 2468700, 3, 'Car Loan payment'), tx('expense', `${m}-09`, 222200, 6, 'Claude'), tx('expense', `${m}-08`, 49900, 5, 'Netflix')]), ...daily5('2026-11', 2)];
+  const rule = (i, cat, amt, note) => ({ id: i, active: true, type: 'expense', category_id: cat, amount_cents: amt, frequency: 'monthly', next_date: '2026-11-21', note });
+  const a = paceAnalysis({ categories: cats, budgets: [], recurring: [rule(1, 3, 2468700, 'Car Loan'), rule(2, 6, 222200, 'Electricity'), rule(3, 5, 49900, 'Netflix')], transactions: rows }, '2026-11-02');
+  const by = (n) => a.commit.items.find((c) => c.name === n);
+  assert.equal(by('Car Loan payment').day, 10); assert.equal(by('Claude').day, 9); assert.equal(by('Netflix').day, 8);
+  assert.equal(by('Car Loan payment').ruleInfo.conflict, true, 'the rule day disagrees with the entries');
+  assert.equal(by('Claude').catId, 6); assert.ok(!a.commit.items.some((c) => c.name === 'Claude' && c.day === 21), 'Claude is not moved to the rule date');
+  const e = by('Electricity'); assert.ok(e && e.months === 0 && e.day === 21, 'a rule with no matching entries stays a separate, rule-only payment');
+  assert.match(paceAdvice(a, fmt).map((x) => `${x.title} ${x.text}`).join(' | '), /rule says the 21st, but your entries land on the 10th/);
+});
+
+test('a payment with no note takes its name from its tag, then its category', () => {
+  const cats = [{ id: 2, name: 'Food' }, { id: 6, name: 'Electricity' }];
+  const mk = (m) => { const t = tx('expense', `${m}-09`, 222200, 6, ''); t.tags = ['claude']; return t; };
+  const a = paceAnalysis({ categories: cats, budgets: [], transactions: [tx('income', '2026-10-02', 18000000), ...daily5('2026-09', 30), ...daily5('2026-10', 31), mk('2026-09'), mk('2026-10'), ...daily5('2026-11', 2)] }, '2026-11-02');
+  assert.equal(a.commit.items[0].name, 'Claude'); assert.equal(a.commit.items[0].day, 9);
+});
+
+test('the expected amount is the latest one, so a price rise is followed', () => {
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: subs([tx('expense', '2026-09-08', 44900, 5, 'Netflix'), tx('expense', '2026-10-08', 49900, 5, 'Netflix'), ...daily5('2026-11', 2)]) }, '2026-11-02');
+  near(a.commit.items[0].amount, 49900, 1e-9);
+});
