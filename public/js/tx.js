@@ -1,6 +1,6 @@
 import { bar } from './charts.js';
 import { paceLines, skewInsight } from './pace.js';
-import { pref, h, html, raw, get, api, qs, bind, state, space, me, wallets, walletById, cats, catById, memberById, money, parseCents, centsToInput, pct, niceDate, time12, dayLabel,
+import { pref, h, html, raw, get, api, qs, bind, state, APP_VERSION, space, me, wallets, walletById, cats, catById, memberById, money, parseCents, centsToInput, pct, niceDate, time12, dayLabel,
   avatar, byChip, I, iconBtn, toast, errToast, confirmSheet, sheet, txIcon, currencySymbol } from './core.js';
 
 // ---------- shared row renderers ----------
@@ -30,6 +30,7 @@ export const header = (extra = '') => {
 };
 
 // ---------- dashboard ----------
+const tipsList = (list) => h`<div class="col" style="gap:10px;margin-top:10px">${list.map((t) => h`<div class="row" style="gap:10px;align-items:flex-start"><span style="font-size:18px">${t.icon}</span><div style="font-size:14px">${t.text}</div></div>`)}</div>`;
 const tipPart = (p) => (Array.isArray(p) ? h`<b class="${{ b: '', ok: 'pos', pos: 'pos', neg: 'neg' }[p[0].trim()] ?? ''}">${p[1]}</b>` : p);
 export async function dashboard(root) {
   const s = await get('/summary');
@@ -50,14 +51,15 @@ export async function dashboard(root) {
     <div class="card"><div class="row between" style="margin-bottom:14px"><h2>Active Budget Pacing</h2><a class="link" href="#/budgets">View Details →</a></div>
       ${b.overall ? h`<div class="col" style="gap:14px">${pace(b.overall, 'Overall Monthly Budget', '🕒')}${top.map((i) => pace(i, i.category?.name, i.category?.icon))}</div>`
         : h`<div class="empty" style="padding:8px"><span class="e">🎯</span>No budgets yet.<br><a class="link" href="#/budgets">Create your first budget</a></div>`}</div>
-    ${s.insights.length || tipLines.length ? h`<div class="card"><div class="row between"><div class="eyebrow" style="color:var(--amber)">Smart tips</div><button class="link" data-act="why" style="font-size:11px">How are these made?</button></div>
+    ${true ? h`<div class="card"><div class="row between"><div class="eyebrow" style="color:var(--amber)">Smart tips</div><button class="link" data-act="why" style="font-size:11px">How are these made?</button></div>
       ${tipLines.length ? h`<div class="col" style="gap:8px;margin-top:10px">${tipLines.map((l) => h`<a class="tipline" href="#/pace"><span class="ic">${l.icon}</span><span class="grow">${l.parts.map(tipPart)}</span>${I.chev}</a>`)}${shape ? h`<a class="tipshape ${shape.tone}" href="#/pace"><span>${shape.icon}</span><span class="grow"><b>${shape.title}.</b> ${shape.first}</span></a>` : ''}</div>` : ''}
-      <div class="col" style="gap:10px;margin-top:10px">${s.insights.map((t) => h`<div class="row" style="gap:10px;align-items:flex-start"><span style="font-size:18px">${t.icon}</span><div style="font-size:14px">${t.text}</div></div>`)}</div></div>` : ''}
+      ${!tipLines.length ? h`<div class="tipline" style="margin-top:10px"><span class="ic">🗓️</span><span class="grow">Log a few days of expenses and income to see your daily spend and savings forecast here.</span></div>` : ''}
+      ${s.insights.length ? (tipLines.length ? h`<details class="moretips"><summary>More tips (${s.insights.length})</summary>${tipsList(s.insights)}</details>` : tipsList(s.insights)) : ''}</div>` : ''}
     <div class="card"><div class="row between" style="margin-bottom:8px"><h2 style="font-size:18px">Recent Transactions</h2><a class="link" href="#/transactions">See all →</a></div>
       <form class="row" data-act="search" style="margin-bottom:6px"><input class="input" name="q" placeholder="Search transactions" style="padding:10px 14px;font-size:14px" aria-label="Search"><button class="iconbtn" aria-label="Search">${I.search}</button></form>
       ${s.recent.length ? groupedRows(s.recent) : h`<div class="empty"><span class="e">🧾</span>No transactions yet.<br>Tap <b>+</b> to add your first one.</div>`}</div>`);
   bind(root, { submit: { search: (el) => { location.hash = '#/transactions' + qs({ q: new FormData(el).get('q') }); } },
-    click: { why: () => { const sh = sheet(h`<h1 style="font-size:20px">How smart tips work</h1><p class="muted">They are plain arithmetic on your own transactions and budgets (spend pace, budget %, month-over-month change, share of income kept). <b>No AI model, LLM or machine learning is used</b>, and nothing leaves your server.</p><button class="btn" data-act="close">Got it</button>`); } } });
+    click: { why: () => { const sh = sheet(h`<h1 style="font-size:20px">How smart tips work</h1><p class="muted">They are plain arithmetic on your own transactions and budgets (spend pace, budget %, month-over-month change, share of income kept). <b>No AI model, LLM or machine learning is used</b>, and nothing leaves your server.</p><p class="muted" style="font-size:11px">App version ${APP_VERSION}</p><button class="btn" data-act="close">Got it</button>`); } } });
 }
 
 // ---------- full list with filters ----------
