@@ -19,6 +19,7 @@ const MIN_DAYS = 7;                       // a previous month needs at least thi
 const AMOUNT_TOL = 0.15;                  // same payment if the amount is within 15%...
 const DAY_TOL = 3;                        // ...and falls within 3 days of the usual date
 const MATCH_TOL = 0.3;                    // a payment this month matches an expected one if within 30%
+const norm = (n) => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const median = (a) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
 /** Describes a list of daily amounts (cents). */
@@ -59,27 +60,39 @@ function collect(data, today, nMonths) {
 /** Finds payments that repeat monthly: same category, similar amount, similar day, in at least two previous months (or tagged recurring). */
 function findCommitments(priorMonths, rules, meanDaily, catName, today, dim) {
   const minAmt = Math.max(1.5 * meanDaily, 1), clusters = [];
-  const all = []; for (const m of priorMonths) for (const t of m.txs) { if (t.recurring_id != null || t.amount_cents >= minAmt) all.push({ t, month: m.key, day: Dt.parse(t.date).d }); }
+  const all = []; for (const m of priorMonths) for (const t of m.txs) all.push({ t, month: m.key, day: Dt.parse(t.date).d });   // small subscriptions (a streaming plan, an AI tool) repeat too, so every expense is a candidate
   all.sort((a, b) => b.t.amount_cents - a.t.amount_cents);
   for (const c of all) {
-    const cat = c.t.category_id ?? 0; let hit = null;
-    for (const cl of clusters) if (cl.cat === cat && Math.abs(c.t.amount_cents - median(cl.amounts)) <= AMOUNT_TOL * median(cl.amounts) && Math.abs(c.day - median(cl.days)) <= DAY_TOL) { hit = cl; break; }
-    if (!hit) { hit = { cat, amounts: [], days: [], perMonth: new Map(), tag: false, notes: new Map() }; clusters.push(hit); }
+    const cat = c.t.category_id ?? 0, nn = norm(c.t.note); let hit = null;
+    // the same payment can land a few days earlier or later each month (weekends, billing cycles) and its amount can drift a little (price rises, exchange rates),
+    // so when the note is the same it is the same payment, whatever the exact day
+    for (const cl of clusters) if (cl.cat === cat) { const med = median(cl.amounts), same = nn && cl.names.has(nn);
+      if (Math.abs(c.t.amount_cents - med) <= (same ? 0.25 : AMOUNT_TOL) * med && Math.abs(c.day - median(cl.days)) <= (same ? 12 : DAY_TOL)) { hit = cl; break; } }
+    if (!hit) { hit = { cat, amounts: [], days: [], perMonth: new Map(), tag: false, notes: new Map(), names: new Set() }; clusters.push(hit); }
     hit.amounts.push(c.t.amount_cents); hit.days.push(c.day); hit.perMonth.set(c.month, (hit.perMonth.get(c.month) || 0) + 1); if (c.t.recurring_id != null) hit.tag = true;
-    if (c.t.note) hit.notes.set(c.t.note, (hit.notes.get(c.t.note) || 0) + 1);
+    if (nn) hit.names.add(nn); if (c.t.note) hit.notes.set(c.t.note, (hit.notes.get(c.t.note) || 0) + 1);
+  }
+  // a monthly payment shows up once a month: two groups that never appear in the same month and look alike are one payment whose date drifted
+  for (let i = 0; i < clusters.length; i++) for (let j = clusters.length - 1; j > i; j--) {
+    const A = clusters[i], B = clusters[j]; if (A.cat !== B.cat) continue;
+    const disjoint = ![...B.perMonth.keys()].some((k) => A.perMonth.has(k)), near = Math.abs(median(A.amounts) - median(B.amounts)) <= 0.25 * Math.max(median(A.amounts), median(B.amounts));
+    const sameName = [...B.names].some((n) => A.names.has(n)), close = Math.abs(median(A.days) - median(B.days)) <= 12;
+    if (disjoint && near && (sameName || close)) { A.amounts.push(...B.amounts); A.days.push(...B.days); for (const [k, v] of B.perMonth) A.perMonth.set(k, v); for (const [k, v] of B.notes) A.notes.set(k, (A.notes.get(k) || 0) + v); for (const n of B.names) A.names.add(n); A.tag ||= B.tag; clusters.splice(j, 1); }
   }
   const out = [];
   for (const cl of clusters) {
     const months = cl.perMonth.size, maxPer = Math.max(...cl.perMonth.values());
-    if (maxPer > 2 || !(months >= 2 || (cl.tag && months >= 1))) continue;
+    // a payment smaller than a normal day must be proven more: the same note in two months, or any look-alike in three (so everyday small buys are not mistaken for bills)
+    const small = median(cl.amounts) < minAmt, proven = !small || (cl.names.size > 0 && months >= 2) || months >= 3;
+    if (maxPer > 2 || !((months >= 2 && proven) || (cl.tag && months >= 1))) continue;
     const note = [...cl.notes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-    out.push({ key: `p${cl.cat}-${Math.round(median(cl.amounts))}`, catId: cl.cat, name: note || catName(cl.cat), day: Math.round(median(cl.days)), amount: median(cl.amounts), months, source: cl.tag ? 'recurring' : 'pattern' });
+    out.push({ key: `p${cl.cat}-${Math.round(median(cl.amounts))}`, catId: cl.cat, name: note || catName(cl.cat), day: Math.round(median(cl.days)), amount: median(cl.amounts), months, monthSet: [...cl.perMonth.keys()], source: cl.tag ? 'recurring' : 'pattern' });
   }
   // the household's own recurring rules are the most reliable source of what is coming
   const { y, m } = Dt.parse(today); const mk = Dt.monthOf(today);
   for (const r of rules) {
     const cat = r.category_id ?? 0, nd = r.next_date, nm = Dt.monthOf(nd);
-    const add = (day) => { const dup = out.find((o) => o.catId === cat && Math.abs(o.amount - r.amount_cents) <= AMOUNT_TOL * r.amount_cents && Math.abs(o.day - day) <= DAY_TOL); if (dup) { dup.day = day; dup.amount = r.amount_cents; dup.source = 'recurring'; dup.rule = true; } else out.push({ key: `r${r.id}-${day}`, catId: cat, name: r.note || catName(cat), day, amount: r.amount_cents, months: 0, source: 'recurring', rule: true }); };
+    const add = (day) => { const dup = out.find((o) => o.catId === cat && Math.abs(o.amount - r.amount_cents) <= 0.25 * r.amount_cents && (norm(o.name) === norm(r.note) || Math.abs(o.day - day) <= 12)); if (dup) { dup.day = day; dup.amount = r.amount_cents; dup.source = 'recurring'; dup.rule = true; } else out.push({ key: `r${r.id}-${day}`, catId: cat, name: r.note || catName(cat), day, amount: r.amount_cents, months: 0, source: 'recurring', rule: true }); };
     if (r.frequency === 'monthly') add(Math.min(dim, Dt.parse(nd).d));
     else if (r.frequency === 'weekly') { for (let d = nd; Dt.monthOf(d) === mk || d < today; d = Dt.addDays(d, 7)) { if (Dt.monthOf(d) === mk) add(Dt.parse(d).d); if (d > Dt.monthEnd(today)) break; } }
     else if (r.frequency === 'yearly' && nm === mk) add(Dt.parse(nd).d);
@@ -116,7 +129,7 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
 
   // ---- fixed payments: what repeats, what is paid, what is still to come
   const rules = (data.recurring || []).filter((r) => r.active && r.type === 'expense');
-  const commits = findCommitments(out.prior, rules, baseDaily, catName, today, dim);
+  let commits = findCommitments(out.prior, rules, baseDaily, catName, today, dim);
   const curExpense = cur.txs.slice(), used = new Set();
   for (const c of commits) {
     const cand = curExpense.filter((t) => !used.has(t.id) && matches(c, t)).sort((a, b) => Math.abs(Dt.parse(a.date).d - c.day) - Math.abs(Dt.parse(b.date).d - c.day))[0];
@@ -124,6 +137,10 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
     else c.status = c.day > day ? 'upcoming' : c.day === day ? 'today' : 'late';
     c.dueIn = c.day - day; c.date = Dt.ymd(ty, tm, Math.min(c.day, dim));
   }
+  // a monthly payment is made once: if one has been paid this month, a lookalike still marked as due is the same payment under another date or amount, not a second charge
+  const paidC = commits.filter((c) => c.status === 'paid'), disjoint = (x, y) => x.length && y.length && !x.some((k) => y.includes(k));
+  const sameAs = (u, p) => u.catId === p.catId && (norm(u.name) === norm(p.name) || (disjoint(u.monthSet || [], p.monthSet || []) && Math.abs(u.amount - p.amount) <= 0.25 * Math.max(u.amount, p.amount)) || (u.rule && Math.abs(u.amount - p.amount) <= 0.15 * p.amount && Math.abs(u.day - p.day) <= 12));
+  commits = commits.filter((u, i) => u.status === 'paid' || !(paidC.some((p) => sameAs(u, p)) || commits.slice(0, i).some((v) => v.status !== 'paid' && v.catId === u.catId && norm(v.name) === norm(u.name))));
   const taggedNow = curExpense.filter((t) => t.recurring_id != null && !used.has(t.id));
   const isFixedNow = (t) => used.has(t.id) || t.recurring_id != null;
   const fixedPaidTx = curExpense.filter(isFixedNow);

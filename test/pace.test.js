@@ -183,3 +183,44 @@ test('category view: the loan category carries its own due date and the budget r
   assert.match(catAdvice(loan, fmt, a).map((x) => x.text).join(' '), /Car EMI \$300\.00 on the 15th \(in 5 days\)/);
   assert.match(catAdvice(house, fmt, a).map((x) => x.text).join(' '), /Rent \$800\.00 on the 1st already paid/);
 });
+
+// ---- subscriptions and loans must be counted once a month, however small or however much the date drifts ------------------------------------------------------
+const cat5 = [{ id: 1, name: 'Housing' }, { id: 2, name: 'Food' }, { id: 3, name: 'Loans' }, { id: 5, name: 'Subscriptions' }];
+const daily5 = (key, days) => Array.from({ length: days }, (_, i) => tx('expense', `${key}-${String(i + 1).padStart(2, '0')}`, 500000, 2));   // ₹5,000 a day: far bigger than a ₹649 plan
+const subs = (rows) => [tx('income', '2026-09-02', 18000000), tx('income', '2026-10-02', 18000000), ...daily5('2026-09', 30), ...daily5('2026-10', 31), ...rows];
+
+test('a small monthly subscription is one payment, not part of the daily spend', () => {
+  const rows = subs([tx('expense', '2026-09-05', 64900, 5, 'Netflix'), tx('expense', '2026-10-05', 64900, 5, 'Netflix'), tx('expense', '2026-11-05', 64900, 5, 'Netflix'), ...daily5('2026-11', 10)]);
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: rows }, '2026-11-10'), n = a.commit.items.filter((c) => c.name === 'Netflix');
+  assert.equal(n.length, 1); assert.equal(n[0].status, 'paid'); near(a.now.fixedPaid, 64900); near(a.now.everydayPerDay, 500000, 1e-6, 'Netflix is not in the daily figure');
+  assert.equal(a.commit.upcoming.length, 0);
+});
+
+test('a charge that lands on different days each month is still one payment, and once paid it is not also "due"', () => {
+  // Netflix on the 5th, 12th, then paid on the 9th this month; Claude billed in a slightly different amount each month
+  const rows = subs([tx('expense', '2026-09-05', 64900, 5, 'Netflix'), tx('expense', '2026-10-12', 64900, 5, 'Netflix'), tx('expense', '2026-11-09', 64900, 5, 'Netflix'),
+    tx('expense', '2026-09-03', 195000, 5, 'Claude'), tx('expense', '2026-10-04', 205000, 5, 'Claude'), tx('expense', '2026-11-04', 201000, 5, 'Claude'), ...daily5('2026-11', 10)]);
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: rows }, '2026-11-10');
+  for (const name of ['Netflix', 'Claude']) { const items = a.commit.items.filter((c) => c.name === name); assert.equal(items.length, 1, `${name} should appear once`); assert.equal(items[0].status, 'paid'); }
+  assert.equal(a.commit.upcoming.length, 0, 'nothing should be left as due'); near(a.now.upcoming, 0);
+  near(a.now.fixedPaid, 64900 + 201000, 1e-9);
+});
+
+test('a loan whose date drifts by a week is one payment: paid this month means nothing more is due', () => {
+  const rows = subs([tx('expense', '2026-09-03', 2468700, 3, 'Car loan EMI'), tx('expense', '2026-10-10', 2468700, 3, 'Car loan EMI'), tx('expense', '2026-11-07', 2468700, 3, 'Car loan EMI'), ...daily5('2026-11', 12)]);
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: rows }, '2026-11-12');
+  assert.equal(a.commit.items.filter((c) => /EMI/.test(c.name)).length, 1); assert.equal(a.commit.upcoming.length, 0);
+  const emi = a.cats.find((c) => c.id === 3); near(emi.proj, 2468700, 1e-9, 'the EMI is counted once in the month');
+});
+
+test('two different subscriptions of similar size in the same month stay separate', () => {
+  const both = (m) => [tx('expense', `${m}-05`, 64900, 5, 'Netflix'), tx('expense', `${m}-20`, 59900, 5, 'Spotify')];
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: subs([...both('2026-09'), ...both('2026-10'), tx('expense', '2026-11-05', 64900, 5, 'Netflix'), ...daily5('2026-11', 10)]) }, '2026-11-10');
+  assert.equal(a.commit.items.length, 2); assert.equal(a.commit.upcoming.length, 1); assert.equal(a.commit.upcoming[0].name, 'Spotify'); near(a.now.upcoming, 59900, 5000);
+});
+
+test('everyday small buys are not mistaken for subscriptions', () => {
+  const coffee = (m, n) => Array.from({ length: n }, (_, i) => tx('expense', `${m}-${String(3 + i * 2).padStart(2, '0')}`, 15000, 2, 'Coffee'));
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: subs([...coffee('2026-09', 10), ...coffee('2026-10', 10), ...coffee('2026-11', 4)]) }, '2026-11-10');
+  assert.equal(a.commit.items.length, 0);
+});
