@@ -1,4 +1,5 @@
 import { bar } from './charts.js';
+import { paceLines, skewInsight } from './pace.js';
 import { pref, h, html, raw, get, api, qs, bind, state, space, me, wallets, walletById, cats, catById, memberById, money, parseCents, centsToInput, pct, niceDate, time12, dayLabel,
   avatar, byChip, I, iconBtn, toast, errToast, confirmSheet, sheet, txIcon, currencySymbol } from './core.js';
 
@@ -29,6 +30,7 @@ export const header = (extra = '') => {
 };
 
 // ---------- dashboard ----------
+const tipPart = (p) => (Array.isArray(p) ? h`<b class="${{ b: '', ok: 'pos', pos: 'pos', neg: 'neg' }[p[0].trim()] ?? ''}">${p[1]}</b>` : p);
 export async function dashboard(root) {
   const s = await get('/summary');
   const b = s.budgets, top = [...b.items].sort((a, c) => c.pct - a.pct).slice(0, 2);
@@ -37,6 +39,8 @@ export async function dashboard(root) {
     ${bar(i.pct)}
     <div class="row between small" style="margin-top:4px"><span class="muted">${pct(i.pct)} spent (${money(Math.max(0, i.remaining_cents))} left)</span>
       <span class="${i.status === 'ok' ? 'pos' : i.status === 'warning' ? 'warn' : 'neg'}">${i.status === 'over' ? 'Over budget' : i.safe_per_day_cents != null ? `Safe: ${money(i.safe_per_day_cents)}/day` : ''}</span></div></div>`;
+  const tipLines = paceLines(s.pace, (c) => money(c)), sk = s.pace?.ok && s.pace.skewAll && s.pace.hasPrior ? skewInsight(s.pace.skewAll, (c) => money(c), s.pace.spikePlan) : null;
+  const shape = sk && sk.title !== 'Too early to tell' ? { ...sk, first: sk.text.split(/(?<=\.)\s/)[0] } : null;
   html(root, h`${header()}
     <div class="card glow"><div class="eyebrow">Total net worth (all wallets)</div><div class="big" style="margin:4px 0 10px">${money(s.net_worth_cents)}</div>
       ${s.savings_rate != null ? h`<span class="pill">Savings rate: ${pct(Math.max(0, s.savings_rate))}</span>` : h`<span class="pill">No income logged this month</span>`}
@@ -46,7 +50,8 @@ export async function dashboard(root) {
     <div class="card"><div class="row between" style="margin-bottom:14px"><h2>Active Budget Pacing</h2><a class="link" href="#/budgets">View Details →</a></div>
       ${b.overall ? h`<div class="col" style="gap:14px">${pace(b.overall, 'Overall Monthly Budget', '🕒')}${top.map((i) => pace(i, i.category?.name, i.category?.icon))}</div>`
         : h`<div class="empty" style="padding:8px"><span class="e">🎯</span>No budgets yet.<br><a class="link" href="#/budgets">Create your first budget</a></div>`}</div>
-    ${s.insights.length ? h`<div class="card"><div class="row between"><div class="eyebrow" style="color:var(--amber)">Smart tips</div><button class="link" data-act="why" style="font-size:11px">How are these made?</button></div>
+    ${s.insights.length || tipLines.length ? h`<div class="card"><div class="row between"><div class="eyebrow" style="color:var(--amber)">Smart tips</div><button class="link" data-act="why" style="font-size:11px">How are these made?</button></div>
+      ${tipLines.length ? h`<div class="col" style="gap:8px;margin-top:10px">${tipLines.map((l) => h`<a class="tipline" href="#/pace"><span class="ic">${l.icon}</span><span class="grow">${l.parts.map(tipPart)}</span>${I.chev}</a>`)}${shape ? h`<a class="tipshape ${shape.tone}" href="#/pace"><span>${shape.icon}</span><span class="grow"><b>${shape.title}.</b> ${shape.first}</span></a>` : ''}</div>` : ''}
       <div class="col" style="gap:10px;margin-top:10px">${s.insights.map((t) => h`<div class="row" style="gap:10px;align-items:flex-start"><span style="font-size:18px">${t.icon}</span><div style="font-size:14px">${t.text}</div></div>`)}</div></div>` : ''}
     <div class="card"><div class="row between" style="margin-bottom:8px"><h2 style="font-size:18px">Recent Transactions</h2><a class="link" href="#/transactions">See all →</a></div>
       <form class="row" data-act="search" style="margin-bottom:6px"><input class="input" name="q" placeholder="Search transactions" style="padding:10px 14px;font-size:14px" aria-label="Search"><button class="iconbtn" aria-label="Search">${I.search}</button></form>

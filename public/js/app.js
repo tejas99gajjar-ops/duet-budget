@@ -18,6 +18,7 @@ const routes = [
   ['analytics', an.analytics, { tab: 'analytics', live: true }], ['portfolio', money.portfolio, { live: true, noNav: true }],
   ['transactions', tx.list, { live: true, noNav: true }], ['tx/new', tx.form, { noNav: true }], ['tx/:id/edit', tx.form, { noNav: true }],
   ['tx/:id', tx.detail, { live: true, noNav: true }], ['settings', settings.main, { live: true, tab: '' }], ['profile', settings.profile, { noNav: true }],
+  ['pace', (root) => import('./pace-ui.js').then((m) => m.screen(root)), { live: true, noNav: true }],
   ['activity', settings.activity, { live: true, noNav: true }], ['recurring', settings.recurring, { live: true, noNav: true }],
   ['fire(?:/(?<rest>.*))?', (root, params) => import('./fire/index.js').then((m) => m.fireRoute(root, params)), { noNav: true, section: 'fire' }],   // FIRE planner: loaded on demand
 ].map(([p, fn, opts]) => ({ re: new RegExp('^' + p.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn, ...opts }));

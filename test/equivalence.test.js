@@ -38,7 +38,7 @@ const ops = async () => {
   await both('PATCH', '/space', { week_start: 3 });
   const inv = await both('POST', '/investments', { symbol: 'VOO', name: 'Vanguard', kind: 'etf', quantity: 15, cost_cents: 900000, price_cents: 64380 }); await both('PATCH', `/investments/${inv[0].id}`, { price_cents: 65000 }, null);
 };
-const strip = (v) => JSON.parse(JSON.stringify(v, (k, x) => (['user_id', 'by', 'created_by', 'id', 'category_id', 'pending_sync', 'price_updated_at', 'user_name', 'to_wallet_name'].includes(k) ? undefined : x)));
+const strip = (v) => JSON.parse(JSON.stringify(v, (k, x) => (['user_id', 'by', 'created_by', 'id', 'category_id', 'pending_sync', 'price_updated_at', 'user_name', 'to_wallet_name', 'pace'].includes(k) ? undefined : x)));
 test('summary, budgets, analytics and portfolio match the original server', async () => {
   await ops();
   const cmp = async (path) => { const [o, n] = await both('GET', path); assert.deepEqual(strip(n), strip(o), path); };

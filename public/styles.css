@@ -123,3 +123,23 @@ html{overscroll-behavior-y:none}
 .appsw-seg a.on{background:var(--accent);color:#fff}
 .appsw-help{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:14px;border:1px solid var(--line,rgba(127,127,127,.25));font-weight:800;font-size:14px;color:var(--text)}
 #appsw[data-sec=fire] .appsw-seg a.on{background:#7C5FE6}
+
+/* spending pace */
+.tipline{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:14px;background:var(--inner);font-size:13.5px;line-height:1.45;color:inherit}
+.tipline .ic{font-size:18px;flex:none;line-height:1.3}.tipline svg{flex:none;width:16px;height:16px;stroke:var(--dim);fill:none;stroke-width:2;margin-top:3px}
+.tipline b{font-weight:800}
+.tipshape{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:14px;font-size:12.5px;line-height:1.45;color:var(--muted);border:1px dashed var(--line)}
+.tipshape.warn{border-color:color-mix(in srgb,var(--amber) 55%,transparent)}.tipshape.good{border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.tipshape b{color:var(--text)}
+.big2{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-top:6px;overflow-wrap:anywhere}.big2 small{font-size:12px;font-weight:600;color:var(--muted);margin-left:2px}
+.pbar{position:relative;height:7px;border-radius:6px;background:var(--line);overflow:hidden}.pbar.tall{height:10px;border-radius:7px;overflow:visible}
+.pbar>i{display:block;height:100%;border-radius:inherit}.pbar.tall>i{position:absolute;left:0;top:0}.pbar>i.ghost{opacity:.35}
+.pbar .over{position:absolute;right:-2px;top:-9px;font-size:9px;font-style:normal;color:var(--red)}
+.catrow{display:block;width:100%;text-align:left;padding:13px 14px;border-radius:16px;background:var(--inner);color:inherit;border:0}
+.catrow .pill{font-size:11px;padding:3px 9px}.pill.bad{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,transparent)}
+.insight{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:14px;background:var(--inner);margin-top:12px}
+.insight .ic{font-size:20px;flex:none;line-height:1.2}.insight.warn{background:color-mix(in srgb,var(--amber) 12%,var(--inner))}.insight.good{background:color-mix(in srgb,var(--accent) 10%,var(--inner))}
+.chart svg{display:block;max-width:100%}
+.plegend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:var(--muted);margin-top:8px}.plegend span{display:inline-flex;align-items:center;gap:6px}
+.plegend i{width:14px;height:3px;border-radius:2px;display:inline-block}.plegend i.dash{background:none;border-top:2px dashed;height:0;width:16px}
+.catrow .row.between>span:last-child{white-space:nowrap}.catrow .row.between>span:first-child{min-width:0}

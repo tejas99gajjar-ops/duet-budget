@@ -1,6 +1,7 @@
 // Pure budget / analytics logic over in-memory rows (ported from the original SQL-backed server so the maths is unchanged).
 // data = { space, members:[{id,name,email,color}], wallets, categories, transactions, budgets, recurring, investments, activity }
 import * as Dt from './dates.js';
+import { paceAnalysis } from './pace.js';
 
 const total = (rows, type) => rows.reduce((s, t) => s + (t.type === type ? t.amount_cents : 0), 0);
 const between = (data, from, to) => data.transactions.filter((t) => t.date >= from && t.date <= to);
@@ -82,7 +83,7 @@ export function summary(data, today) {
   const income = total(rows, 'income'), expense = total(rows, 'expense'), wallets = walletBalances(data);
   const budgets = budgetsOverview(data, today, 'period', data.space.week_start);
   return { today, month: mkey, net_worth_cents: wallets.reduce((s, w) => s + w.balance_cents, 0), income_cents: income, expense_cents: expense,
-    savings_rate: income > 0 ? (income - expense) / income : null, budgets, recent: sortTx(data.transactions).slice(0, 8).map((t) => shapeTx(data, t)), insights: insights(data, today, budgets, rows, income, expense) };
+    savings_rate: income > 0 ? (income - expense) / income : null, budgets, recent: sortTx(data.transactions).slice(0, 8).map((t) => shapeTx(data, t)), insights: insights(data, today, budgets, rows, income, expense), pace: paceAnalysis(data, today, { budgets }) };
 }
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
