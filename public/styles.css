@@ -180,3 +180,7 @@ html{overscroll-behavior-y:none}
 .pkv.wide{grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
 .pbig{white-space:normal;overflow-wrap:anywhere}
 .pbox .pkv.wide{grid-template-columns:minmax(0,1fr);gap:9px}.pbox .pk{flex-direction:row;justify-content:space-between;align-items:baseline;gap:12px}.pbox .pk span{font-size:12.5px}.pbox .pk b{text-align:right;font-size:15px}
+
+.cr-note{font-size:12px;line-height:1.4;color:var(--muted);background:color-mix(in srgb,var(--line) 40%,transparent);border-radius:10px;padding:7px 10px}.cr-note.warn{color:var(--amber);background:color-mix(in srgb,var(--amber) 11%,transparent)}
+.payrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line);min-width:0}.payrow:first-child{border-top:0}.payrow b{white-space:nowrap}.payrow .grow b{white-space:normal}
+.pdot{width:12px;height:12px;border-radius:50%;flex:none;border:2.5px solid var(--amber);background:transparent}.pdot.paid{background:var(--accent);border-color:var(--accent)}.pdot.late{border-color:var(--red)}.pdot.oneoff{border-color:var(--muted);border-style:dashed}

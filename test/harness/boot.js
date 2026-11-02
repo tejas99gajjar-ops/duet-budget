@@ -19,6 +19,12 @@ if (params.get('seed') !== '0') {
   await tx({ type: 'expense', amount_cents: 8420, category_id: cats['Groceries'], date: mk(1), note: 'Weekly grocery haul', tags: ['groceries'] });
   await tx({ type: 'expense', amount_cents: 5490, category_id: cats['Food & Drinks'], date: mk(0), note: 'Dinner & drinks', tags: ['dinner'] });
   for (const [c, a] of [['Bills & Utilities', 130000], ['Food & Drinks', 45000], ['Groceries', 40000]]) await be.insert('budgets', { space_id: sid, category_id: cats[c], amount_cents: a, start_date: mk(Number(today.slice(8, 10)) - 1) });
+  if (params.get('pace') === '1') {   // a household with a monthly rent on the 1st, a car EMI on the 15th and everyday groceries, to try the spending-pace screens
+    const tdy = new Date().toISOString().slice(0, 10), key = (back) => { const d = new Date(tdy + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() - back, 1); return d.toISOString().slice(0, 7); };
+    for (const back of [2, 1]) { const m = key(back); await tx({ type: 'expense', amount_cents: 1850000, category_id: cats['Home'], date: m + '-01', note: 'Rent' }); await tx({ type: 'expense', amount_cents: 2468700, category_id: cats['Bills & Utilities'], date: m + '-15', note: 'Car loan EMI' }); await tx({ type: 'income', amount_cents: 18600000, category_id: cats['Salary'], date: m + '-03', note: 'Salary' });
+      for (let d = 2; d <= 28; d += 2) await tx({ type: 'expense', amount_cents: 90000 + ((d * 37) % 50) * 1000, category_id: cats['Groceries'], date: `${m}-${String(d).padStart(2, '0')}`, note: 'Groceries' }); }
+    await tx({ type: 'expense', amount_cents: 1850000, category_id: cats['Home'], date: tdy.slice(0, 7) + '-01', note: 'Rent' }); await tx({ type: 'expense', amount_cents: 95000, category_id: cats['Groceries'], date: tdy, note: 'Groceries' });
+  }
   await be.insert('investments', { space_id: sid, symbol: 'AAPL', name: 'Apple', kind: 'stock', quantity: 12, cost_cents: 150000, price_cents: 16200, prev_price_cents: 15800 });
 }
 if (params.get('fire') !== '0' && params.get('seed') !== '0') {
