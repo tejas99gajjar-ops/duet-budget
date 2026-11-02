@@ -106,9 +106,9 @@ export async function screen(root) {
     <div class="card"><div class="eyebrow" style="margin-bottom:2px">What to do from today</div><div class="note" style="margin-bottom:6px">Day ${a.day} of ${a.dim}: ${a.left} day${a.left === 1 ? '' : 's'} left. Updates with every entry you add.</div>
       ${advice.map((x) => h`<div class="insight ${tone(x.tone)}"><span class="ic">${x.icon}</span><div class="grow"><b>${x.title}</b><div class="itext">${x.text}</div></div></div>`)}</div>
 
-    ${a.commit.items.length || a.commit.lumps.length ? h`<div class="card"><div class="ph"><div class="eyebrow">Payments this month</div><span class="note">${a.commit.paid.length} paid · ${a.commit.upcoming.length} due</span></div>
+    ${a.commit.items.length || a.commit.lumps.length ? h`<div class="card"><div class="ph"><div class="eyebrow">Payments this month</div><span class="note">${a.commit.paid.length} paid · ${a.commit.upcoming.length} due · tap for details</span></div>
       ${a.commit.items.length ? h`<div class="chart">${monthStrip(a)}</div>` : ''}
-      <div class="col" style="gap:2px;margin-top:6px">${a.commit.items.map((c) => h`<div class="payrow"><span class="pdot ${c.status}"></span><span class="grow"><b>${c.name}</b><div class="note">${c.status === 'paid' ? `Paid on the ${ordinal(Number(c.paidDate.slice(8)))} · not repeated` : c.status === 'late' ? `Expected around the ${ordinal(c.day)}, not seen yet` : c.status === 'today' ? 'Due today' : `Due on the ${ordinal(c.day)} · ${whenText(c.dueIn)}`}</div></span><b class="${c.status === 'paid' ? '' : c.status === 'late' ? 'neg' : 'warn'}">${m0(c.status === 'paid' ? c.paidAmount : c.amount)}</b></div>`)}
+      <div class="col" style="gap:2px;margin-top:6px">${a.commit.items.map((c, i) => h`<button class="payrow" data-act="pay" data-i="${i}"><span class="pdot ${c.status}"></span><span class="grow"><b>${c.name}</b><div class="note">${c.status === 'paid' ? `Paid on the ${ordinal(Number(c.paidDate.slice(8)))} · not repeated` : c.status === 'late' ? `Expected around the ${ordinal(c.day)}, not seen yet` : c.status === 'today' ? 'Due today' : `Due on the ${ordinal(c.day)} · ${whenText(c.dueIn)}`}</div></span><span class="payamt"><b class="${c.status === 'paid' ? '' : c.status === 'late' ? 'neg' : 'warn'}">${m0(c.status === 'paid' ? c.paidAmount : c.amount)}</b>${c.dups?.length ? h`<small class="neg">entered twice</small>` : ''}</span></button>`)}
         ${a.commit.lumps.map((l) => h`<div class="payrow"><span class="pdot oneoff"></span><span class="grow"><b>${l.note || 'One-off purchase'}</b><div class="note">One-off on the ${ordinal(Number(l.date.slice(8)))} · left out of the daily pace</div></span><b>${m0(l.amount)}</b></div>`)}</div></div>` : ''}
 
     <div class="card"><div class="eyebrow" style="margin-bottom:6px">Money out, day by day</div>
@@ -123,7 +123,21 @@ export async function screen(root) {
       <div class="col" style="gap:10px">${a.cats.map(catRow)}${!a.cats.length ? h`<div class="muted small">No spending recorded yet this month.</div>` : ''}</div>
       <div class="note" style="margin-top:12px">Tap a row to drill down. The faint bar is the projected month-end; the solid bar is what you have spent.</div></div>`);
   draw();
-  bind(root, { click: { how: howSheet, scope: (el) => { scope = el.dataset.k; draw(); }, cat: (el) => drill(a, Number(el.dataset.id)) } });
+  bind(root, { click: { how: howSheet, scope: (el) => { scope = el.dataset.k; draw(); }, cat: (el) => drill(a, Number(el.dataset.id)), pay: (el) => payDetail(a, Number(el.dataset.i)) } });
+}
+
+const shortDate = (d) => `${monthName(d.slice(0, 7)).slice(0, 3)} ${Number(d.slice(8, 10))}`;
+/** "How we counted this": the evidence behind one payment, so a wrong guess is easy to spot and fix. */
+function payDetail(a, i) {
+  const c = a.commit.items[i]; if (!c) return; const fmt = (x) => money(x);
+  const why = [c.ruleInfo ? `You set it to repeat ${c.ruleInfo.frequency}${c.ruleInfo.next ? `; its next date is ${shortDate(c.ruleInfo.next)}` : ''}.` : null, c.seen?.length ? `Seen in earlier months on ${c.seen.map(shortDate).join(', ')}.` : 'Not seen in earlier months yet.', c.source === 'recurring' && !c.ruleInfo ? 'Those entries carry your recurring tag.' : null].filter(Boolean);
+  sheet(h`<div class="ph"><h1 style="font-size:20px">${c.name}</h1><button class="iconbtn" data-act="close" aria-label="Close">${I.close}</button></div>
+    <div class="pgrid"><div class="pstat"><div class="eyebrow">${c.status === 'paid' ? 'Paid this month' : 'Expected'}</div><div class="pbig">${m0(c.status === 'paid' ? c.paidAmount : c.amount)}</div><div class="note">${c.status === 'paid' ? `On ${shortDate(c.paidDate)}` : `Around the ${ordinal(c.day)} · ${c.status === 'late' ? 'not seen yet' : whenText(c.dueIn)}`}</div></div>
+      <div class="pstat"><div class="eyebrow">Usual amount</div><div class="pbig">${m0(c.amount)}</div><div class="note">${c.months ? `${c.months} previous month${c.months === 1 ? '' : 's'}` : 'From your recurring rule'}</div></div></div>
+    <div><div class="eyebrow" style="margin-bottom:6px">Why this counts as a regular payment</div>${why.map((w) => h`<div class="insight"><span class="ic">🔎</span><div class="grow itext">${w}</div></div>`)}</div>
+    <div class="insight good"><span class="ic">1️⃣</span><div class="grow itext"><b>Counted once a month.</b> ${c.status === 'paid' ? 'It is already paid, so it is not spread over the days left.' : 'It is added on its date, not spread over the days.'}</div></div>
+    ${c.dups?.length ? h`<div class="insight warn"><span class="ic">👯</span><div class="grow itext"><b>Entered again.</b> ${c.dups.map((d) => `${fmt(d.amount)} on ${shortDate(d.date)}`).join(', ')} looks like the same payment. It is left out of every figure here. If it is a second charge, ignore this; otherwise delete the extra entry.</div></div>` : ''}
+    <div class="row" style="gap:10px"><a class="btn ghost" href="#/transactions${qs({ q: c.name })}" data-act="close" style="flex:1;text-align:center">See entries</a><button class="btn" data-act="close" style="flex:1">Done</button></div>`);
 }
 
 function drill(a, id) {

@@ -224,3 +224,31 @@ test('everyday small buys are not mistaken for subscriptions', () => {
   const a = paceAnalysis({ categories: cat5, budgets: [], transactions: subs([...coffee('2026-09', 10), ...coffee('2026-10', 10), ...coffee('2026-11', 4)]) }, '2026-11-10');
   assert.equal(a.commit.items.length, 0);
 });
+
+// ---- the same payment entered twice (by hand and by a recurring rule) ---------------------------------------------------------------------------------
+test('a payment entered twice in one month (by hand and by its recurring rule) is counted once and flagged', () => {
+  const rows = subs([tx('expense', '2026-10-08', 64900, 5, 'Netflix'), tx('expense', '2026-11-08', 64900, 5, 'Netflix'), tx('expense', '2026-11-09', 64900, 5, 'Netflix'), ...daily5('2026-11', 10)]); rows[rows.length - 11].recurring_id = 7; rows[rows.length - 12].recurring_id = 7; rows[rows.length - 13].recurring_id = 7;
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: rows }, '2026-11-10');
+  assert.equal(a.commit.items.filter((c) => c.name === 'Netflix').length, 1); near(a.now.fixedPaid, 64900, 1e-9, 'counted once');
+  assert.equal(a.commit.dups.length, 1); near(a.now.spent, 10 * 500000 + 64900, 1e-9, 'the extra entry is left out of the spend');
+  assert.match(paceAdvice(a, fmt).map((x) => `${x.title} ${x.text}`).join(' | '), /A payment looks entered twice[\s\S]*Netflix \$649\.00 on the 9th/);
+});
+
+test('a duplicate in a previous month does not inflate the usual daily spend', () => {
+  const clean = subs([tx('expense', '2026-09-08', 64900, 5, 'Netflix'), tx('expense', '2026-10-08', 64900, 5, 'Netflix')]);
+  const twice = subs([tx('expense', '2026-09-08', 64900, 5, 'Netflix'), tx('expense', '2026-10-08', 64900, 5, 'Netflix'), tx('expense', '2026-10-09', 64900, 5, 'Netflix')]);
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: [...clean, ...daily5('2026-11', 3)] }, '2026-11-03'), b = paceAnalysis({ categories: cat5, budgets: [], transactions: [...twice, ...daily5('2026-11', 3)] }, '2026-11-03');
+  near(b.usual.perDay, a.usual.perDay, 1e-6); assert.equal(b.commit.dupsPrior.length, 1);
+});
+
+test('payments in the same category are matched by name, so two subscriptions never swap', () => {
+  const rows = subs([tx('expense', '2026-09-05', 64900, 5, 'Netflix'), tx('expense', '2026-10-05', 64900, 5, 'Netflix'), tx('expense', '2026-09-20', 62000, 5, 'Hotstar'), tx('expense', '2026-10-20', 62000, 5, 'Hotstar'), tx('expense', '2026-11-20', 62000, 5, 'Hotstar'), ...daily5('2026-11', 22)]);
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: rows }, '2026-11-22');
+  assert.equal(a.commit.items.find((c) => c.name === 'Hotstar').status, 'paid'); assert.equal(a.commit.items.find((c) => c.name === 'Netflix').status, 'late');
+});
+
+test('a note that repeats many times a month (groceries) is a habit, not a bill', () => {
+  const groc = (m) => Array.from({ length: 14 }, (_, i) => tx('expense', `${m}-${String(2 + i * 2).padStart(2, '0')}`, 90000 + (i % 3) * 20000, 2, 'Groceries'));
+  const a = paceAnalysis({ categories: cat5, budgets: [], transactions: [tx('income', '2026-10-02', 18000000), tx('income', '2026-09-02', 18000000), ...groc('2026-09'), ...groc('2026-10'), ...groc('2026-11').slice(0, 2)] }, '2026-11-05');
+  assert.equal(a.commit.items.length, 0);
+});
