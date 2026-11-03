@@ -254,18 +254,20 @@ test('a note that repeats many times a month (groceries) is a habit, not a bill'
 });
 
 // ---- the entries are the truth: dates and names come from what was really logged ---------------------------------------------------------------------
-test('payments follow the dates in the entries even when recurring rules say another day', () => {
+test('a recurring rule decides when and how much is still to come, and a disagreement with past entries is flagged', () => {
   const cats = [{ id: 2, name: 'Food' }, { id: 3, name: 'Loans' }, { id: 6, name: 'Electricity' }, { id: 5, name: 'Subscriptions' }];
   const rows = [tx('income', '2026-10-02', 18000000), tx('income', '2026-09-02', 18000000), ...daily5('2026-09', 30), ...daily5('2026-10', 31),
     ...['2026-09', '2026-10'].flatMap((m) => [tx('expense', `${m}-10`, 2468700, 3, 'Car Loan payment'), tx('expense', `${m}-09`, 222200, 6, 'Claude'), tx('expense', `${m}-08`, 49900, 5, 'Netflix')]), ...daily5('2026-11', 2)];
-  const rule = (i, cat, amt, note) => ({ id: i, active: true, type: 'expense', category_id: cat, amount_cents: amt, frequency: 'monthly', next_date: '2026-11-21', note });
-  const a = paceAnalysis({ categories: cats, budgets: [], recurring: [rule(1, 3, 2468700, 'Car Loan'), rule(2, 6, 222200, 'Electricity'), rule(3, 5, 49900, 'Netflix')], transactions: rows }, '2026-11-02');
-  const by = (n) => a.commit.items.find((c) => c.name === n);
-  assert.equal(by('Car Loan payment').day, 10); assert.equal(by('Claude').day, 9); assert.equal(by('Netflix').day, 8);
-  assert.equal(by('Car Loan payment').ruleInfo.conflict, true, 'the rule day disagrees with the entries');
-  assert.equal(by('Claude').catId, 6); assert.ok(!a.commit.items.some((c) => c.name === 'Claude' && c.day === 21), 'Claude is not moved to the rule date');
-  const e = by('Electricity'); assert.ok(e && e.months === 0 && e.day === 21, 'a rule with no matching entries stays a separate, rule-only payment');
-  assert.match(paceAdvice(a, fmt).map((x) => `${x.title} ${x.text}`).join(' | '), /rule says the 21st, but your entries land on the 10th/);
+  const rule = (i, cat, amt, note, next) => ({ id: i, active: true, type: 'expense', category_id: cat, amount_cents: amt, frequency: 'monthly', next_date: next, note });
+  // the rules are set for the 21st (wrong) for the loan and the subscription, and correctly for the 9th for Claude
+  const rules = [rule(1, 3, 2468700, 'Car Loan', '2026-11-21'), rule(2, 6, 222200, 'Claude', '2026-11-09'), rule(3, 5, 49900, 'Netflix', '2026-11-21')];
+  const a = paceAnalysis({ categories: cats, budgets: [], recurring: rules, transactions: rows }, '2026-11-02'), by = (n) => a.commit.items.find((c) => c.name === n);
+  assert.equal(by('Car Loan payment').day, 21, 'the rule is what will create the entry'); assert.equal(by('Car Loan payment').ruleInfo.conflict, true); assert.equal(by('Car Loan payment').ruleInfo.historyDay, 10);
+  assert.equal(by('Claude').day, 9); assert.ok(!by('Claude').ruleInfo.conflict);
+  assert.match(paceAdvice(a, fmt).map((x) => `${x.title} ${x.text}`).join(' | '), /rule is set for the 21st but your past entries landed on the 10th/);
+  // once the rule is edited to the 10th the conflict goes away
+  const fixed = paceAnalysis({ categories: cats, budgets: [], recurring: [rule(1, 3, 2468700, 'Car Loan', '2026-11-10'), rules[1], rule(3, 5, 49900, 'Netflix', '2026-11-08')], transactions: rows }, '2026-11-02');
+  assert.equal(fixed.commit.items.find((c) => c.name === 'Car Loan payment').day, 10); assert.ok(!fixed.commit.items.some((c) => c.ruleInfo?.conflict));
 });
 
 test('a payment with no note takes its name from its tag, then its category', () => {
@@ -278,4 +280,32 @@ test('a payment with no note takes its name from its tag, then its category', ()
 test('the expected amount is the latest one, so a price rise is followed', () => {
   const a = paceAnalysis({ categories: cat5, budgets: [], transactions: subs([tx('expense', '2026-09-08', 44900, 5, 'Netflix'), tx('expense', '2026-10-08', 49900, 5, 'Netflix'), ...daily5('2026-11', 2)]) }, '2026-11-02');
   near(a.commit.items[0].amount, 49900, 1e-9);
+});
+
+// ---- recurring rules with periods: daily, weekly, custom ----------------------------------------------------------------------------------------------------
+import { occurrencesIn } from '../public/js/pace.js';
+test('a rule fires on its own schedule: weekly, every 2 weeks, every 3 months', () => {
+  const r = (frequency, every, next) => ({ frequency, every, next_date: next });
+  assert.deepEqual(occurrencesIn(r('weekly', 1, '2026-11-05'), '2026-11-01', '2026-11-30'), ['2026-11-05', '2026-11-12', '2026-11-19', '2026-11-26']);
+  assert.deepEqual(occurrencesIn(r('weekly', 2, '2026-11-05'), '2026-11-01', '2026-11-30'), ['2026-11-05', '2026-11-19']);
+  assert.deepEqual(occurrencesIn(r('monthly', 3, '2026-12-08'), '2026-11-01', '2026-11-30'), [], 'next due in December: nothing this month');
+  assert.deepEqual(occurrencesIn(r('monthly', 1, '2026-11-30'), '2026-11-01', '2026-11-30'), ['2026-11-30']);
+  assert.equal(occurrencesIn(r('daily', 1, '2026-11-10'), '2026-11-01', '2026-11-30').length, 21);
+  assert.deepEqual(occurrencesIn(r('daily', 10, '2026-11-02'), '2026-11-01', '2026-11-30'), ['2026-11-02', '2026-11-12', '2026-11-22']);
+});
+
+test('a weekly rule adds every remaining occurrence, a paid one is found through its link, and nothing is due when the rule has moved on', () => {
+  const rule = { id: 4, active: true, type: 'expense', category_id: 5, amount_cents: 20000, frequency: 'weekly', every: 1, next_date: '2026-11-12', note: 'Tuition' };
+  const paid = tx('expense', '2026-11-05', 20000, 5, 'Tuition'); paid.recurring_id = 4;
+  const a = paceAnalysis({ categories: cat5, budgets: [], recurring: [rule], transactions: subs([paid, ...daily5('2026-11', 8)]) }, '2026-11-08'), c = a.commit.items.find((x) => x.name === 'Tuition');
+  assert.equal(c.count, 3); assert.deepEqual(c.pending, ['2026-11-12', '2026-11-19', '2026-11-26']); assert.equal(c.paidCount, 1); near(a.now.upcoming, 3 * 20000);
+  const p = a.cum.proj; near(p[11] - p[10], 500000 + 20000, 1, 'a step on each due day'); near(p[18] - p[17], 500000 + 20000, 1);
+  // a monthly rule that already created this month's entry has moved to next month: paid, nothing due
+  const monthly = { id: 5, active: true, type: 'expense', category_id: 5, amount_cents: 49900, frequency: 'monthly', every: 1, next_date: '2026-12-05', note: 'Netflix' };
+  const made = tx('expense', '2026-11-05', 49900, 5, 'Netflix'); made.recurring_id = 5;
+  const b = paceAnalysis({ categories: cat5, budgets: [], recurring: [monthly], transactions: subs([made, ...daily5('2026-11', 8)]) }, '2026-11-08');
+  assert.equal(b.commit.items.find((x) => x.name === 'Netflix').status, 'paid'); near(b.now.upcoming, 0);
+  // and a rule moved away from this month leaves nothing to count
+  const moved = paceAnalysis({ categories: cat5, budgets: [], recurring: [{ ...monthly, next_date: '2026-12-20' }], transactions: subs(daily5('2026-11', 8)) }, '2026-11-08');
+  assert.ok(!moved.commit.items.some((x) => x.name === 'Netflix'));
 });

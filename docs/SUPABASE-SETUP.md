@@ -14,6 +14,9 @@
 ## FIRE planner tables (one more query)
 Open **SQL Editor → New query**, paste all of `supabase/fire.sql` (or tap **Copy setup SQL** on the planner's setup screen) and **Run**. It adds `fire_plans` and `fire_snapshots` with the same household-only security rules. It can be run more than once safely and does not change any existing table or row.
 
+## Editable recurring rules with custom periods (one more query, optional)
+Editing a recurring entry's name, amount, category, tags, period and next date works without any database change. To also use a **custom period** such as "every 2 weeks" or "every 3 months", open **SQL Editor → New query**, paste all of `supabase/recurring-edit.sql` and **Run** (or tap **Copy the update** in Settings → Recurring → a rule → Custom). It adds one column (`every`, default 1) and replaces the function that creates due entries; every existing rule keeps repeating exactly as before and nothing is deleted. Safe to run more than once.
+
 ## Free web hosting for the app files (GitHub Pages)
 1. Create a GitHub repo (can be private only on paid plans; public is fine: it contains no secrets, the anon key is public by design) and push this `duet/` folder.
 2. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**. The workflow `.github/workflows/pages.yml` publishes `public/` on every push.

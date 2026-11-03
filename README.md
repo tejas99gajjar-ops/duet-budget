@@ -30,6 +30,9 @@ A retirement planner inside the app. Everything is calculated on your device (no
 - **Guide** (the ? button): a glossary of 40+ terms with everyday analogies and live values from your plan, where every number comes from, the colour meanings, a step-by-step *How it works*, and a list of the assumptions that matter most for you. Any underlined word in the planner opens its explanation. The Overview has a Simple view for showing it to someone new.
 - Your plan is shared by everyone in the household and syncs live. Offline edits are kept on the device and sent later.
 
+## Recurring entries
+Settings → Recurring lists every recurring entry. Tap one to change its name, amount, category, tags, period (daily, weekly, monthly, yearly or custom "every N days/weeks/months/years") and next date, or to delete it. Changes apply from its next occurrence; entries already logged are never changed. The spending pace and Smart tips read these rules to know what is still due this month and on which date. Custom periods need `supabase/recurring-edit.sql` run once.
+
 ## Connect your friend
 Settings → **People** shows an invite code and a **Copy link** button. They open the link (or sign up and type the code) and share everything. The first person is the owner and can remove others.
 

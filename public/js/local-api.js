@@ -119,6 +119,22 @@ route('DELETE', '/budgets/:id', async ({ id }) => { const c = ctx(); if (!c.data
 route('GET', '/summary', async () => { const c = ctx(); return M.summary(c.data, c.today); });
 route('GET', '/analytics', async (_p, q) => { const c = ctx(); return M.analytics(c.data, c.today, { period: q.period, date: q.date, kind: ['income', 'net'].includes(q.kind) ? q.kind : 'expense', category: q.category, member: q.member }); });
 route('GET', '/recurring', async () => { const c = ctx(); return { items: c.data.recurring.filter((r) => r.active).sort((a, b) => (a.next_date < b.next_date ? -1 : 1)) }; });
+// Edit a recurring rule. Only the rule changes: entries already created are never touched, and the next entries use the new values from the next occurrence on.
+route('PATCH', '/recurring/:id', async ({ id }, _q, b) => {
+  const c = ctx(), ex = c.data.recurring.find((r) => r.id === Number(id) && r.active); if (!ex) throw bad('Not found');
+  const patch = {};
+  if (b.amount_cents !== undefined) patch.amount_cents = cents(b.amount_cents);
+  if (b.note !== undefined) patch.note = str(b.note, 500);
+  if (b.tags !== undefined) patch.tags = cleanTags(b.tags);
+  if (b.category_id !== undefined) { if (ex.type === 'transfer') patch.category_id = null; else if (b.category_id == null) patch.category_id = null; else { const cat = c.data.categories.find((x) => x.id === Number(b.category_id)); if (!cat || cat.kind !== ex.type) throw bad('Invalid category'); patch.category_id = cat.id; } }
+  if (b.frequency !== undefined) patch.frequency = oneOf(b.frequency, FREQS, 'period');
+  if (b.every !== undefined) { const n = Number(b.every); if (!Number.isInteger(n) || n < 1 || n > 365) throw bad('Repeat every must be a whole number from 1 to 365'); patch.every = n; }
+  if (b.next_date !== undefined) { if (!Dt.isDate(b.next_date)) throw bad('Invalid date'); if (b.next_date < c.today) throw bad('Pick today or a later date. An earlier date would create entries for days that have already passed.'); patch.next_date = b.next_date; }
+  if (!Object.keys(patch).length) return { ok: true };
+  try { await S.update('recurring', ex.id, patch); }
+  catch (e) { if (/every/i.test(e.message || '')) throw bad('Custom periods need a one-time database update. Open Settings → Recurring and tap "Turn on custom periods".'); throw e; }
+  return { ok: true };
+});
 route('DELETE', '/recurring/:id', async ({ id }) => { ctx(); await S.update('recurring', Number(id), { active: false }); return { ok: true }; });
 
 // investments (prices are typed in by hand; the app calls no market-data service)

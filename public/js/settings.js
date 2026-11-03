@@ -1,5 +1,5 @@
 import * as S from './store.js';
-import { downloadCsv, h, html, raw, get, api, bind, loadBoot, state, space, me, wallets, money, I, iconBtn, toast, confirmSheet, sheet, avatar, niceDate, initials, pref, setPref, applyTheme, DATE_FORMATS, COLORS, swatches } from './core.js';
+import { downloadCsv, h, html, raw, get, api, bind, loadBoot, state, space, me, wallets, money, parseCents, I, iconBtn, toast, confirmSheet, sheet, avatar, niceDate, initials, pref, setPref, applyTheme, DATE_FORMATS, COLORS, swatches } from './core.js';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const FALLBACK_CCY = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'SGD', 'AED', 'ZAR', 'BRL', 'MXN', 'SEK', 'NOK', 'NZD'];
@@ -96,10 +96,63 @@ export async function activity(root) {
   html(root, h`<div class="page-head"><a class="iconbtn" href="#/settings" aria-label="Back">${I.back}</a><h1 style="font-size:20px">Activity</h1><span style="width:36px"></span></div>
     <div class="card">${items.length ? items.map((a) => h`<div class="list-row"><span class="grow">${a.text}</span><span class="muted small">${a.ts.slice(5, 16).replace('T', ' ')}</span></div>`) : h`<div class="empty">No activity yet.</div>`}</div>`);
 }
+// ---------- recurring rules: view, edit and delete ----------
+const UNITS = [['daily', 'day'], ['weekly', 'week'], ['monthly', 'month'], ['yearly', 'year']];
+/** "Monthly, next 21 Nov", "Every 2 weeks, next 12 Nov" */
+export const scheduleText = (r) => { const n = r.every || 1, unit = (UNITS.find((u) => u[0] === r.frequency) || [0, 'month'])[1];
+  return `${n === 1 ? { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly' }[r.frequency] : `Every ${n} ${unit}s`} · next ${niceDate(r.next_date)}`; };
+
 export async function recurring(root) {
   const { items } = await get('/recurring'); await loadBoot();
+  const catOf = (id) => state.boot?.categories?.find?.((c) => c.id === id) || (S.state.data?.categories || []).find((c) => c.id === id);
+  const row = (r) => { const c = catOf(r.category_id); return h`<button class="list-row recrow" data-act="edit" data-id="${r.id}"><span class="grow" style="min-width:0"><b>${r.note || c?.name || r.type}</b><div class="muted small">${scheduleText(r)}</div>
+      <div class="row small" style="gap:6px;flex-wrap:wrap;margin-top:4px">${c ? h`<span class="pill">${c.icon} ${c.name}</span>` : ''}${(r.tags || []).map((t) => h`<span class="pill">#${t}</span>`)}</div></span>
+      <span style="text-align:right;flex:none"><b class="${r.type === 'income' ? 'pos' : 'neg'}">${money(r.amount_cents)}</b><div class="muted" style="font-size:11px">${r.type}</div></span>${I.chev}</button>`; };
   html(root, h`<div class="page-head"><a class="iconbtn" href="#/settings" aria-label="Back">${I.back}</a><h1 style="font-size:20px">Recurring</h1><span style="width:36px"></span></div>
-    <div class="card">${items.length ? items.map((r) => h`<div class="list-row"><span class="grow"><b>${r.note || r.type}</b><div class="muted small">${r.frequency} · next ${niceDate(r.next_date)}</div></span><b class="${r.type === 'income' ? 'pos' : 'neg'}">${money(r.amount_cents)}</b><button class="iconbtn" data-act="stop" data-id="${r.id}" aria-label="Stop" style="color:var(--red)">${I.trash}</button></div>`)
-      : h`<div class="empty"><span class="e">🔁</span>No recurring transactions.<br>Turn on “Recurring” when adding one.</div>`}</div>`);
-  bind(root, { click: { stop: async (el) => { if (await confirmSheet('Stop repeating?', 'Past transactions stay; no new ones are created.', 'Stop')) { await api('DELETE', '/recurring/' + el.dataset.id); window.dispatchEvent(new HashChangeEvent('hashchange')); } } } });
+    <div class="note-card"><b>Tap a recurring entry to change it.</b> Changes apply from its next occurrence onwards. Entries already logged stay exactly as they are. The spending pace and Smart tips use these rules to know what is coming and when.</div>
+    <div class="card">${items.length ? items.map(row) : h`<div class="empty"><span class="e">🔁</span>No recurring transactions.<br>Turn on “Recurring” when adding one.</div>`}</div>`);
+  bind(root, { click: { edit: (el) => recurringSheet(items.find((r) => r.id === Number(el.dataset.id)), items) } });
+}
+
+/** Edit one recurring rule: name, amount, category, tags, period (daily, weekly, monthly, yearly or custom "every N ...") and the next date. */
+export function recurringSheet(r, items = []) {
+  if (!r) return;
+  const supportsEvery = items.some((x) => 'every' in x) || 'every' in r;
+  const cats = (S.state.data?.categories || []).filter((c) => c.kind === r.type && !c.archived);
+  let period = (r.every || 1) > 1 ? 'custom' : r.frequency, unit = r.frequency, every = r.every || 1;
+  const today = S.today();
+  const nextHint = () => ({ daily: 'every day', weekly: 'every week', monthly: 'every month', yearly: 'every year', custom: `every ${every} ${(UNITS.find((u) => u[0] === unit) || [0, 'month'])[1]}${every === 1 ? '' : 's'}` }[period]);
+  const body = () => h`<div class="row between"><div><h1 style="font-size:22px">Edit recurring</h1><div class="muted small">${r.type[0].toUpperCase() + r.type.slice(1)} · applies from the next occurrence</div></div><button class="iconbtn" data-act="close" aria-label="Close">${I.close}</button></div>
+    <form class="col" data-act="save" style="gap:16px" novalidate>
+      <label class="f">Name<input class="input" name="note" value="${r.note || ''}" maxlength="80" placeholder="e.g. Netflix"></label>
+      <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><label class="f">Amount<input class="input" name="amount" inputmode="decimal" value="${(r.amount_cents / 100).toFixed(2)}" required></label>
+        ${r.type === 'transfer' ? '' : h`<label class="f">Category<select class="input" name="category"><option value="">None</option>${cats.map((c) => h`<option value="${c.id}" ${c.id === r.category_id ? raw('selected') : ''}>${c.icon} ${c.name}</option>`)}</select></label>`}</div>
+      <label class="f">Tags<input class="input" name="tags" value="${(r.tags || []).map((t) => '#' + t).join(' ')}" placeholder="#subscription #ai"><div class="muted" style="font-size:11px;margin-top:4px">Separate with spaces or commas</div></label>
+      <div><div class="eyebrow" style="margin-bottom:8px">Repeats</div>
+        <div class="seg" role="tablist" aria-label="Repeat period" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr))">${[['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly'], ['custom', 'Custom']].map(([k, l]) => h`<button type="button" role="tab" class="${period === k ? 'on' : ''}" data-act="period" data-k="${k}" style="padding:9px 2px;font-size:12.5px">${l}</button>`)}</div>
+        ${period === 'custom' ? h`<div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);margin-top:10px"><label class="f">Every<input class="input" name="every" inputmode="numeric" value="${every}"></label>
+          <label class="f">Unit<select class="input" name="unit">${UNITS.map(([k, l]) => h`<option value="${k}" ${k === unit ? raw('selected') : ''}>${l}s</option>`)}</select></label></div>
+          ${supportsEvery ? '' : h`<div class="note-card warn" style="margin-top:10px"><b>One-time update needed.</b> Custom periods need a small database update. <button type="button" class="link" data-act="sql">Copy the update</button>, paste it in Supabase → SQL Editor → Run, then reopen the app.</div>`}` : ''}</div>
+      <label class="f">Next occurrence<input class="input" type="date" name="next" value="${r.next_date}" min="${today}" required><div class="muted" style="font-size:11px;margin-top:4px">Then ${nextHint()}. Pick today or a later date.</div></label>
+      <div class="err-msg" id="err" role="alert"></div>
+      <div class="row"><button type="button" class="btn ghost" data-act="close">Cancel</button><button class="btn" ${period === 'custom' && !supportsEvery ? 'disabled' : ''}>Save changes</button></div>
+      <button type="button" class="btn danger" data-act="del">Delete this recurring entry</button></form>`;
+  const redraw = () => { const f = s.el.querySelector('form'), keep = f ? Object.fromEntries(new FormData(f)) : {}; if (keep.every) every = Number(keep.every) || every; if (keep.unit) unit = keep.unit; s.el.querySelector('.sheet').innerHTML = `<div class="grab"></div>${body().s}`; const g = s.el.querySelector('form'); for (const k of ['note', 'amount', 'tags', 'next', 'category']) if (keep[k] !== undefined && g.elements[k]) g.elements[k].value = keep[k]; };
+  const s = sheet(body(), {
+    click: {
+      period: (el) => { period = el.dataset.k; if (period !== 'custom') unit = period; redraw(); },
+      sql: async () => { try { await navigator.clipboard.writeText(await (await fetch('recurring-edit.sql')).text()); toast('Copied. Paste it in the Supabase SQL Editor.'); } catch { toast('Could not copy. Open supabase/recurring-edit.sql from the project.', true); } },
+      del: async () => { s.close(); if (await confirmSheet('Delete this recurring entry?', 'No new entries will be created. Entries already logged stay.', 'Delete')) { try { await api('DELETE', '/recurring/' + r.id); toast('Deleted'); window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (e) { toast(e.message, true); } } },
+    },
+    submit: { save: async (el) => {
+      const d = Object.fromEntries(new FormData(el)), err = s.el.querySelector('#err'), amt = parseCents(d.amount || '');
+      if (Number.isNaN(amt) || amt <= 0) { err.textContent = 'Enter a valid amount'; return; }
+      const freq = period === 'custom' ? d.unit : period, n = period === 'custom' ? Number(d.every) : 1;
+      if (period === 'custom' && (!Number.isInteger(n) || n < 1 || n > 365)) { err.textContent = 'Repeat every must be a whole number from 1 to 365'; return; }
+      const body = { note: d.note, amount_cents: amt, tags: String(d.tags || '').split(/[\s,]+/).map((t) => t.replace(/^#/, '')).filter(Boolean), frequency: freq, next_date: d.next };
+      if (r.type !== 'transfer') body.category_id = d.category ? Number(d.category) : null;
+      if (supportsEvery) body.every = n;
+      try { await api('PATCH', '/recurring/' + r.id, body); s.close(); toast('Saved. Applies from the next occurrence'); window.dispatchEvent(new HashChangeEvent('hashchange')); }
+      catch (e) { err.textContent = e.message; } } },
+  });
 }

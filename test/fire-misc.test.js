@@ -104,3 +104,10 @@ test('key assumptions are ranked by how much they move the gap and re-rank when 
   const saving = (l) => l.find((x) => x.key === 'saving').swing;
   assert.ok(saving(b) > saving(a), 'a bigger SIP makes the saving assumption matter more');
 });
+
+test('the copy of the recurring-edit SQL shipped to the browser matches the one in supabase/, and it only adds a column and replaces one function', () => {
+  const a = readFileSync(new URL('../public/recurring-edit.sql', import.meta.url), 'utf8'), b = readFileSync(new URL('../supabase/recurring-edit.sql', import.meta.url), 'utf8');
+  assert.equal(a, b); const low = b.toLowerCase();
+  assert.ok(!/drop\s+table|drop\s+column|truncate|delete\s+from|update\s+public\.transactions/.test(low));
+  assert.ok(/add column if not exists every/.test(low) && /create or replace function public\.run_recurring/.test(low));
+});

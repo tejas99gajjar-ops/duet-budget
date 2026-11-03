@@ -96,21 +96,22 @@ function findCommitments(priorMonths, rules, meanDaily, catName, today, dim) {
     const tags = new Map(); for (const it of cl.items) for (const t of it.tags) tags.set(t, (tags.get(t) || 0) + 1); const tag = [...tags.entries()].sort((x, y) => y[1] - x[1])[0]?.[0];
     out.push({ key: `p${cl.cat}-${Math.round(amount)}`, catId: cl.cat, name: note ? (note === note.toLowerCase() ? note[0].toUpperCase() + note.slice(1) : note) : catName(cl.cat), day, amount, months, monthSet: keys, hasNote: !!note, seen: [...cl.dates].sort(), seenItems: [...cl.items].sort((x, y) => (x.date < y.date ? -1 : 1)), source: cl.tag ? 'recurring' : 'pattern' });
   }
-  // the household's own recurring rules are the most reliable source of what is coming
-  const { y, m } = Dt.parse(today); const mk = Dt.monthOf(today);
+  // the household's own recurring rules say what is coming and when: their schedule (next date, period, "every N") is followed exactly, and what a rule has already created is found through its link
+  const mk = Dt.monthOf(today), mStart = mk + '-01', mEnd = Dt.monthEnd(today);
   for (const r of rules) {
-    const cat = r.category_id ?? 0, nd = r.next_date, nm = Dt.monthOf(nd);
-    const add = (day) => {
-      const rn = norm(r.note), info = { frequency: r.frequency, next: r.next_date, day };
-      const dup = out.find((o) => o.catId === cat && Math.abs(o.amount - r.amount_cents) <= 0.25 * Math.max(o.amount, r.amount_cents) && (rn && o.hasNote ? sameName(o.name, r.note) : Math.abs(o.day - day) <= 12));
-      if (dup) { dup.rule = true; dup.source = 'recurring'; info.conflict = dup.months >= 1 && Math.abs(day - dup.day) > 3; dup.ruleInfo = info; if (dup.months === 0) { dup.day = day; dup.amount = r.amount_cents; } }
-      else out.push({ key: `r${r.id}-${day}`, catId: cat, name: r.note || catName(cat), hasNote: !!r.note, day, amount: r.amount_cents, months: 0, monthSet: [], seen: [], seenItems: [], source: 'recurring', rule: true, ruleInfo: info });
-    };
-    if (r.frequency === 'monthly') add(Math.min(dim, Dt.parse(nd).d));
-    else if (r.frequency === 'weekly') { for (let d = nd; Dt.monthOf(d) === mk || d < today; d = Dt.addDays(d, 7)) { if (Dt.monthOf(d) === mk) add(Dt.parse(d).d); if (d > Dt.monthEnd(today)) break; } }
-    else if (r.frequency === 'yearly' && nm === mk) add(Dt.parse(nd).d);
+    const cat = r.category_id ?? 0, every = Math.max(1, Number(r.every) || 1), dates = occurrencesIn(r, mStart, mEnd, every), rn = norm(r.note);
+    const first = dates.length ? Dt.parse(dates[0]).d : Math.min(dim, Dt.parse(r.next_date).d);
+    const dup = out.find((o) => !o.ruleId && o.catId === cat && Math.abs(o.amount - r.amount_cents) <= 0.25 * Math.max(o.amount, r.amount_cents) && (rn && o.hasNote ? sameName(o.name, r.note) : Math.abs(o.day - first) <= 12));
+    const info = { id: r.id, frequency: r.frequency, every, next: r.next_date, day: first, thisMonth: dates.length };
+    if (dup) { info.conflict = dup.months >= 1 && dates.length > 0 && Math.abs(first - dup.day) > 3; info.historyDay = dup.day; Object.assign(dup, { ruleId: r.id, rule: true, source: 'recurring', ruleInfo: info, occurrences: dates, count: dates.length, amount: r.amount_cents }); if (dates.length) dup.day = first; }
+    else out.push({ key: `r${r.id}`, catId: cat, name: r.note || catName(cat), hasNote: !!r.note, day: first, amount: r.amount_cents, months: 0, monthSet: [], seen: [], seenItems: [], source: 'recurring', rule: true, ruleId: r.id, ruleInfo: info, occurrences: dates, count: dates.length });
   }
-  void y; void m;
+  return out;
+}
+/** The dates a rule will fire inside [from, to], following its next date, its period and "every N". */
+export function occurrencesIn(rule, from, to, every = Math.max(1, Number(rule.every) || 1)) {
+  const out = [], n0 = rule.next_date, step = (n) => (rule.frequency === 'daily' ? Dt.addDays(n0, n * every) : rule.frequency === 'weekly' ? Dt.addDays(n0, 7 * n * every) : rule.frequency === 'yearly' ? Dt.addMonths(n0, 12 * n * every) : Dt.addMonths(n0, n * every));
+  for (let n = 0; n < 400; n++) { const d = step(n); if (d > to) break; if (d >= from) out.push(d); }
   return out;
 }
 /** Does this transaction look like that payment? Same note: up to 30% apart in amount. A different note: no. No note on one side: within 15%. */
@@ -154,11 +155,23 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
   const baseDaily = estPerDay != null ? estPerDay : cur.expense / covered, lumpMin = Math.max(4 * baseDaily, 1);
   let curExpense = cur.txs.slice(); const used = new Set();
   for (const c of commits) {
+    if (c.ruleId != null) {
+      // a rule-backed payment: what it already created this month is linked to it; what is still ahead comes from its schedule
+      const linked = curExpense.filter((t) => t.recurring_id === c.ruleId); for (const t of linked) used.add(t.id);
+      let pend = (c.occurrences || []).slice(), paidTx = linked.slice();
+      if (!linked.length && pend.length) { const cand = curExpense.filter((t) => !used.has(t.id) && matches(c, t)).sort((a, b) => Math.abs(Dt.parse(a.date).d - c.day) - Math.abs(Dt.parse(b.date).d - c.day))[0]; if (cand) { used.add(cand.id); paidTx = [cand]; pend = pend.slice(1); } }
+      c.paidCount = paidTx.length; if (paidTx.length) { c.paidDate = paidTx[paidTx.length - 1].date; c.paidAmount = sum(paidTx.map((t) => t.amount_cents)) / paidTx.length; c.paidTotal = sum(paidTx.map((t) => t.amount_cents)); c.txId = paidTx[0].id; }
+      c.pending = pend; c.count = pend.length;
+      if (!pend.length) { c.status = paidTx.length ? 'paid' : 'none'; c.dueIn = c.day - day; c.date = Dt.ymd(ty, tm, Math.min(c.day, dim)); continue; }
+      const nd = Dt.parse(pend[0]).d; c.day = nd; c.dueIn = nd - day; c.date = pend[0]; c.status = nd > day ? 'upcoming' : nd === day ? 'today' : 'late'; continue;
+    }
     const cand = curExpense.filter((t) => !used.has(t.id) && matches(c, t)).sort((a, b) => Math.abs(Dt.parse(a.date).d - c.day) - Math.abs(Dt.parse(b.date).d - c.day))[0];
-    if (cand) { used.add(cand.id); c.status = 'paid'; c.paidDate = cand.date; c.paidAmount = cand.amount_cents; c.txId = cand.id; }
+    if (cand) { used.add(cand.id); c.status = 'paid'; c.paidDate = cand.date; c.paidAmount = cand.amount_cents; c.txId = cand.id; c.paidCount = 1; }
     else c.status = c.day > day ? 'upcoming' : c.day === day ? 'today' : 'late';
+    c.count = c.status === 'paid' ? 0 : 1; c.pending = c.status === 'paid' ? [] : [Dt.ymd(ty, tm, Math.min(c.day, dim))];
     c.dueIn = c.day - day; c.date = Dt.ymd(ty, tm, Math.min(c.day, dim));
   }
+  commits = commits.filter((c) => c.status !== 'none');   // a rule with nothing due this month and nothing created is not part of this month
   // extra entries of a payment already made this month (same note or recurring tag, nearly the same amount) are duplicates, not second payments
   const dupsNow = [];
   for (const c of commits.filter((x) => x.status === 'paid')) for (const t of curExpense) {
@@ -190,7 +203,7 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
   // ---- this month, in three buckets
   const flexUsual = weighted(priorSplit, ({ p, s }) => s.flex / p.days), lumpUsual = weighted(priorSplit, ({ s }) => s.lump) || 0;
   const flexNow = nowSplit.flex / covered, w = covered / (covered + 10), flexBlend = flexUsual != null ? w * flexNow + (1 - w) * flexUsual : flexNow;
-  const upcoming = commits.filter((c) => c.status !== 'paid'), upcomingSum = sum(upcoming.map((c) => c.amount)), reserve = Math.max(0, lumpUsual - nowSplit.lump) * (left / dim);
+  const upcoming = commits.filter((c) => c.status !== 'paid'), upcomingSum = sum(upcoming.map((c) => c.amount * (c.count || 1))), reserve = Math.max(0, lumpUsual - nowSplit.lump) * (left / dim);
   const projSpend = cur.expense + upcomingSum + reserve + flexBlend * left;
   const perDayNow = cur.expense / covered, expIncome = Math.max(cur.income, estIncome || 0), incomeBasis = cur.income >= (estIncome || 0) && cur.income > 0 ? 'received' : 'typical';
   out.now = { spent: cur.expense, income: cur.income, perDay: perDayNow, everydayPerDay: flexNow, blendPerDay: flexBlend, fixedPaid: nowSplit.fixed, oneOffs: nowSplit.lump, everydaySpent: nowSplit.flex, upcoming: upcomingSum, reserve, projSpend, expIncome, incomeBasis, projSaves: expIncome ? expIncome - projSpend : null, projRate: expIncome ? (expIncome - projSpend) / expIncome : null, usualEveryday: flexUsual };
@@ -217,7 +230,8 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
   for (let d = 0; d < dim; d++) { let t = 0, k = 0; for (const p of padded) if (d < p.length) { t += sum(p.slice(0, d + 1)); k++; } priorCum.push(k ? t / k : null); }
   const curCum = []; let run = 0; for (let d = 0; d < dim; d++) { if (d < day) { run += cur.daily[d]; curCum.push(run); } else curCum.push(null); }
   const path = new Array(dim).fill(null); let acc = run; path[day - 1] = acc;
-  for (let d = day; d < dim; d++) { acc += flexBlend + (left ? reserve / left : 0) + sum(upcoming.filter((c) => Math.min(c.day, dim) === d + 1 || (c.status === 'late' && d === day)).map((c) => c.amount)); path[d] = acc; }
+  const stepDays = new Map(); for (const c of upcoming) for (const dt of c.pending?.length ? c.pending : [c.date]) { const dd = c.status === 'late' && dt < today ? day + 1 : Dt.parse(dt).d; stepDays.set(dd, (stepDays.get(dd) || 0) + c.amount); }
+  for (let d = day; d < dim; d++) { acc += flexBlend + (left ? reserve / left : 0) + (stepDays.get(d + 1) || 0); path[d] = acc; }
   out.cum = { prior: priorCum, cur: curCum, proj: path, projEnd: projSpend, targetEnd: out.target ? out.target.spend : null };
 
   // ---- category by category
@@ -229,7 +243,7 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
     const nowC = nowSplit.byCat.get(id) || { fixed: 0, lump: 0, flex: 0, lumps: [] }, spent = nowC.fixed + nowC.lump + nowC.flex;
     const priorC = priorSplit.map(({ p, s }) => ({ p, c: s.byCat.get(id) || { fixed: 0, lump: 0, flex: 0 } }));
     const flexUsualC = priorC.length ? weighted(priorC, ({ p, c }) => c.flex / p.days) : null, lumpUsualC = priorC.length ? weighted(priorC, ({ c }) => c.lump) || 0 : 0, totalUsualC = priorC.length ? weighted(priorC, ({ p, c }) => (c.fixed + c.lump + c.flex) / p.days) : null;
-    const myCommits = commits.filter((c) => c.catId === id), up = myCommits.filter((c) => c.status !== 'paid'), upSum = sum(up.map((c) => c.amount));
+    const myCommits = commits.filter((c) => c.catId === id), up = myCommits.filter((c) => c.status !== 'paid'), upSum = sum(up.map((c) => c.amount * (c.count || 1)));
     if (spent <= 0 && !(totalUsualC > 0) && !up.length) continue;
     const flexNowC = nowC.flex / covered, rateC = flexUsualC != null ? w * flexNowC + (1 - w) * flexUsualC : flexNowC, resC = Math.max(0, lumpUsualC - nowC.lump) * (left / dim);
     const proj = spent + upSum + resC + rateC * left;
@@ -244,7 +258,7 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
     const safeFlex = limit != null && left > 0 ? Math.max(0, (limit - spent - upSum - resC) / left) : null;
     out.cats.push({ id, name: info.name, icon: info.icon, color: info.color, spent, fixedPaid: nowC.fixed, oneOffs: nowC.lump, lumps: nowC.lumps.sort((a, c2) => c2.amount - a.amount), everydaySpent: nowC.flex,
       perDayNow: spent / covered, perDayEveryday: flexNowC, perDayUsual: totalUsualC, everydayUsual: flexUsualC, change: flexUsualC > 0 && covered >= 5 ? flexNowC / flexUsualC - 1 : null,
-      upcoming: up.map((c) => ({ name: c.name, day: Math.min(c.day, dim), date: c.date, amount: c.amount, status: c.status, dueIn: c.dueIn })), upcomingSum: upSum, paid: myCommits.filter((c) => c.status === 'paid').map((c) => ({ name: c.name, date: c.paidDate, amount: c.paidAmount })), reserve: resC,
+      upcoming: up.map((c) => ({ name: c.name, day: Math.min(c.day, dim), date: c.date, amount: c.amount, count: c.count || 1, status: c.status, dueIn: c.dueIn })), upcomingSum: upSum, paid: myCommits.filter((c) => c.status === 'paid').map((c) => ({ name: c.name, date: c.paidDate, amount: c.paidAmount })), reserve: resC,
       proj, low: Math.max(spent + upSum, proj - se), high: proj + se, limit, status, overBy: limit != null ? Math.max(0, proj - limit) : 0, safePerDay: limit != null && left > 0 ? Math.max(0, (limit - spent) / left) : null, safeEveryday: safeFlex,
       stats: st, label: skewLabel(st), daily: total.slice(s0 - 1, day), prevAvg, top: curExpense.filter((t) => (t.category_id ?? 0) === id).sort((a, c2) => c2.amount_cents - a.amount_cents).slice(0, 3).map((t) => ({ date: t.date, note: t.note, amount: t.amount_cents })) });
   }
@@ -260,7 +274,9 @@ const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'Au
 export const monthName = (key) => MON[Number(key.slice(5)) - 1];
 export const ordinal = (d) => `${d}${d % 100 >= 11 && d % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd', 'th', 'th', 'th', 'th', 'th', 'th'][d % 10]}`;
 export const whenText = (dueIn) => (dueIn === 0 ? 'today' : dueIn === 1 ? 'tomorrow' : dueIn > 1 ? `in ${dueIn} days` : dueIn === -1 ? 'yesterday' : `${-dueIn} days ago`);
-const nameList = (items, n = 2) => { const l = items.slice(0, n).map((c) => `${c.name} on the ${ordinal(c.day)}`).join(', '), more = items.length - n; return more > 0 ? `${l} and ${more} more` : l; };
+const nameList = (items, n = 2) => { const l = items.slice(0, n).map((c) => (c.count > 1 ? `${c.name} (${c.count} times, from the ${ordinal(c.day)})` : `${c.name} on the ${ordinal(c.day)}`)).join(', '), more = items.length - n; return more > 0 ? `${l} and ${more} more` : l; };
+/** "Netflix ₹499 on the 8th (in 6 days)" or "Tea ₹100 × 12, from the 5th" */
+export const dueText = (x, fmt) => (x.count > 1 ? `${x.name} ${fmt(x.amount)} × ${x.count}, from the ${ordinal(x.day)}` : `${x.name} ${fmt(x.amount)} ${x.status === 'late' ? (x.ruleId != null ? `(was due on the ${ordinal(x.day)}; the rule has not created it yet)` : `(expected around the ${ordinal(x.day)}, not seen yet)`) : `on the ${ordinal(x.day)} (${whenText(x.dueIn)})`}`);
 
 /** The two dashboard lines as structured parts (so they can be styled) plus the plain text. fmt: cents -> string. */
 export function paceLines(a, fmt) {
@@ -291,8 +307,8 @@ export function paceAdvice(a, fmt) {
   if (!a.ok) return out;
   // 0. the same payment entered twice
   if (c.dups && c.dups.length) out.push({ tone: 'warn', icon: '👯', title: 'A payment looks entered twice', text: `${c.dups.map((d) => `${d.name} ${fmt(d.amount)} on the ${ordinal(Dt.parse(d.date).d)}`).join('; ')} ${c.dups.length === 1 ? 'matches' : 'match'} a payment already made this month. We count each of these payments once and leave the extra entry out of every figure. If it really is a second charge, ignore this; if not, delete the extra entry in Transactions.` });
-  // 0b. a recurring rule set for a different day than the entries really land on
-  const off = c.items.filter((x) => x.ruleInfo?.conflict); if (off.length) out.push({ tone: 'warn', icon: '🔁', title: 'A recurring rule is set for a different day', text: `${off.map((x) => `${x.name}: the rule says the ${ordinal(x.ruleInfo.day)}, but your entries land on the ${ordinal(x.day)}`).slice(0, 3).join('; ')}. We follow your entries. Change the rule's date in Settings → Recurring, otherwise it may add an extra entry on the wrong day.` });
+  // 0b. a recurring rule that disagrees with the dates your past entries landed on
+  const off = c.items.filter((x) => x.ruleInfo?.conflict); if (off.length) out.push({ tone: 'warn', icon: '🔁', title: 'A recurring rule is set for a different day', text: `${off.map((x) => `${x.name}: the rule is set for the ${ordinal(x.ruleInfo.day)} but your past entries landed on the ${ordinal(x.ruleInfo.historyDay)}`).slice(0, 3).join('; ')}. We follow the rule, because it is what will create the entry. If the rule is wrong, change it in Settings → Recurring; the change applies from the next occurrence.` });
   // 1. where the month is heading
   if (n.projRate != null) {
     const gap = a.best ? n.projRate - a.best.rate : null;
@@ -303,7 +319,7 @@ export function paceAdvice(a, fmt) {
   if (up.length) {
     const next = up[0], soon = up.filter((x) => x.dueIn >= 0 && x.dueIn <= 3);
     out.push({ tone: soon.length ? 'warn' : 'info', icon: '📅', title: up.length === 1 ? 'A payment is still due' : `${up.length} payments are still due`,
-      text: `${up.map((x) => `${x.name} ${fmt(x.amount)} ${x.status === 'late' ? `(expected around the ${ordinal(x.day)}, not seen yet)` : `on the ${ordinal(x.day)} (${whenText(x.dueIn)})`}`).slice(0, 3).join('; ')}${up.length > 3 ? ` and ${up.length - 3} more` : ''}. Expect a jump on ${next.status === 'late' ? 'the day it lands' : `the ${ordinal(next.day)}`}${t && t.perDayNeeded != null && a.left > 0 ? `; on the other days keep everyday spending to about ${fmt(Math.max(0, t.perDayNeeded))} to stay on your savings goal` : ''}.` });
+      text: `${up.map((x) => dueText(x, fmt)).slice(0, 3).join('; ')}${up.length > 3 ? ` and ${up.length - 3} more` : ''}. Expect a jump on ${next.status === 'late' ? 'the day it lands' : `the ${ordinal(next.day)}`}${t && t.perDayNeeded != null && a.left > 0 ? `; on the other days keep everyday spending to about ${fmt(Math.max(0, t.perDayNeeded))} to stay on your savings goal` : ''}.` });
   } else if (a.left > 0 && (paid.length || c.items.length)) out.push({ tone: 'good', icon: '✅', title: 'Nothing fixed is left to pay', text: 'Every regular payment we expected this month has been made, so the rest of the month is everyday spending only.' });
   // 3. already paid, not extrapolated
   if (paid.length || n.fixedPaid > 0) out.push({ tone: 'info', icon: '🧾', title: 'Already paid, not repeated', text: `${fmt(n.fixedPaid)} of fixed payments${paid.length ? ` (${paid.slice(0, 3).map((x) => `${x.name} ${fmt(x.paidAmount)} on the ${ordinal(Dt.parse(x.paidDate).d)}`).join(', ')}${paid.length > 3 ? ` and ${paid.length - 3} more` : ''})` : ''} are done for the month. They are counted once and are not spread over the days left, so they do not inflate your daily pace.` });
@@ -334,7 +350,7 @@ export function catAdvice(c, fmt, a) {
   if (c.limit != null) out.push({ tone: c.status === 'over' ? 'warn' : c.status === 'watch' ? 'info' : 'good', icon: c.status === 'over' ? '⚠️' : c.status === 'watch' ? '👀' : '✅',
     text: c.status === 'over' ? `On this pace you will pass the ${fmt(c.limit)} budget by ${fmt(c.overBy)}.` : c.status === 'watch' ? `Close to the ${fmt(c.limit)} budget.` : `Comfortably inside the ${fmt(c.limit)} budget.` });
   if (c.paid.length) out.push({ tone: 'info', icon: '🧾', text: `${c.paid.map((x) => `${x.name} ${fmt(x.amount)} on the ${ordinal(Dt.parse(x.date).d)}`).join(', ')} already paid. It is not spread over the days left.` });
-  if (c.upcoming.length) out.push({ tone: 'warn', icon: '📅', text: `Still to come: ${c.upcoming.map((x) => `${x.name} ${fmt(x.amount)} ${x.status === 'late' ? `(expected around the ${ordinal(x.day)})` : `on the ${ordinal(x.day)} (${whenText(x.dueIn)})`}`).join('; ')}. Spend may jump that day.` });
+  if (c.upcoming.length) out.push({ tone: 'warn', icon: '📅', text: `Still to come: ${c.upcoming.map((x) => dueText(x, fmt)).join('; ')}. Spend may jump that day.` });
   if (c.oneOffs > 0) out.push({ tone: 'info', icon: '🛍️', text: `${c.lumps.slice(0, 2).map((x) => `${fmt(x.amount)}${x.note ? ` (${x.note})` : ''} on the ${ordinal(Dt.parse(x.date).d)}`).join(' and ')} counted once, not repeated daily.` });
   if (c.safeEveryday != null && a.left > 0) out.push({ tone: 'info', icon: '🎯', text: `${c.upcoming.length ? 'After the payment' + (c.upcoming.length > 1 ? 's' : '') + ' due, ' : ''}keep everyday spending here to about ${fmt(c.safeEveryday)} per day to stay inside the budget.` });
   if (c.change != null && Math.abs(c.change) >= 0.15) out.push({ tone: c.change > 0 ? 'warn' : 'good', icon: c.change > 0 ? '↑' : '↓', text: `Everyday spending is ${c.change > 0 ? 'up' : 'down'} ${Math.round(Math.abs(c.change) * 100)}% on your usual ${fmt(c.everydayUsual)} a day.` });

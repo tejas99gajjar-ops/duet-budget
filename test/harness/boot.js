@@ -1,8 +1,8 @@
 // Runs the REAL app UI against the REAL supabase/schema.sql inside an in-browser Postgres (PGlite). No network, no Supabase account.
 import { PGlite, types } from '/pglite/index.js';
 import { createDbWith, pgBackend } from '/test/pg-backend.js';
-const schema = await (await fetch('/supabase/schema.sql')).text(), fireSql = await (await fetch('/supabase/fire.sql')).text();
-const db = await createDbWith(PGlite, types, schema, [fireSql]);
+const schema = await (await fetch('/supabase/schema.sql')).text(), fireSql = await (await fetch('/supabase/fire.sql')).text(), editSql = await (await fetch('/supabase/recurring-edit.sql')).text();
+const db = await createDbWith(PGlite, types, schema, [fireSql, editSql]);
 const params = new URLSearchParams(location.search);
 const be = pgBackend(db, params.get('email') || 'demo@duet.local', params.get('name') || 'Tejas Gajjar');
 window.DUET_TEST_BACKEND = be; window.__db = db; window.__be = be;

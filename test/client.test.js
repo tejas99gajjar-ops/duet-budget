@@ -67,6 +67,36 @@ test('recurring rules are created and materialised by the database', async () =>
   await api('POST', '/transactions', { type: 'expense', amount_cents: 999, wallet_id: wallet, category_id: cats['Groceries'], date: Dt.addDays(today, -40), note: 'Sub', recurring: 'monthly' });
   assert.equal(await be.rpc('run_recurring'), 1); await S.refresh(); assert.equal((await api('GET', '/transactions?q=Sub')).items.length, 2); assert.equal(await be.rpc('run_recurring'), 0);
 });
+test('recurring rules can be edited: amount, name, tags, category, period and next date; only the rule changes', async () => {
+  const mk = await api('POST', '/transactions', { type: 'expense', amount_cents: 64900, wallet_id: wallet, category_id: cats['Entertainment'], date: today, note: 'Netflix', tags: ['tv'], recurring: 'monthly' });
+  let rule = (await api('GET', '/recurring')).items.find((r) => r.note === 'Netflix'); assert.ok(rule); assert.equal(rule.every, 1);
+  const before = (await api('GET', '/transactions?q=Netflix')).items.length;
+  const nextWeek = Dt.addDays(today, 7);
+  await api('PATCH', `/recurring/${rule.id}`, { note: 'Netflix Premium', amount_cents: 79900, tags: ['#tv', 'family'], category_id: cats['Bills & Utilities'], frequency: 'weekly', every: 2, next_date: nextWeek });
+  rule = (await api('GET', '/recurring')).items.find((r) => r.id === rule.id);
+  assert.equal(rule.note, 'Netflix Premium'); assert.equal(rule.amount_cents, 79900); assert.deepEqual(rule.tags, ['tv', 'family']); assert.equal(rule.category_id, cats['Bills & Utilities']); assert.equal(rule.frequency, 'weekly'); assert.equal(rule.every, 2); assert.equal(rule.next_date, nextWeek);
+  const original = (await api('GET', `/transactions/${mk.id}`)); assert.equal(original.amount_cents, 64900, 'the entry already logged is not touched'); assert.equal(original.note, 'Netflix');
+  assert.equal((await api('GET', '/transactions?q=Netflix')).items.length, before, 'editing creates no entries');
+  // validation
+  await assert.rejects(api('PATCH', `/recurring/${rule.id}`, { next_date: Dt.addDays(today, -1) }), /today or a later date/);
+  await assert.rejects(api('PATCH', `/recurring/${rule.id}`, { amount_cents: 0 }), /Amount/);
+  await assert.rejects(api('PATCH', `/recurring/${rule.id}`, { every: 0 }), /whole number/); await assert.rejects(api('PATCH', `/recurring/${rule.id}`, { frequency: 'hourly' }), /Invalid period/);
+  await assert.rejects(api('PATCH', `/recurring/${rule.id}`, { category_id: cats['Salary'] }), /Invalid category/);
+  await assert.rejects(api('PATCH', '/recurring/999999', { note: 'x' }), /Not found/);
+});
+test('a custom period steps by "every N": every 2 weeks from a date in the past creates the missed entries and moves on by 14 days', async () => {
+  await api('POST', '/transactions', { type: 'expense', amount_cents: 2500, wallet_id: wallet, category_id: cats['Groceries'], date: Dt.addDays(today, -20), note: 'Fortnightly box', recurring: 'weekly' });
+  const rule = (await api('GET', '/recurring')).items.find((r) => r.note === 'Fortnightly box');
+  await db.query('update recurring set every = 2, next_date = $1 where id = $2', [Dt.addDays(today, -20), rule.id]);   // as the editor saves it (the date check applies to edits made in the app)
+  assert.equal(await be.rpc('run_recurring'), 2, 'days -20 and -6 fall due; the next is in 8 days');
+  const after = (await db.query('select next_date::text d from recurring where id = $1', [rule.id])).rows[0].d; assert.equal(after, Dt.addDays(today, 8));
+  await S.refresh(); assert.equal((await api('GET', '/transactions?q=Fortnightly')).items.length, 3);
+});
+test('deleting a recurring rule stops new entries and keeps the old ones', async () => {
+  const rule = (await api('GET', '/recurring')).items.find((r) => r.note === 'Netflix Premium'); const had = (await api('GET', '/transactions?q=Netflix')).items.length;
+  await api('DELETE', `/recurring/${rule.id}`); assert.ok(!(await api('GET', '/recurring')).items.some((r) => r.id === rule.id)); assert.equal((await api('GET', '/transactions?q=Netflix')).items.length, had);
+  await assert.rejects(api('PATCH', `/recurring/${rule.id}`, { note: 'again' }), /Not found/);
+});
 test('investments, wallets archive, CSV safe', async () => {
   const i = await api('POST', '/investments', { symbol: 'aapl', name: 'Apple', kind: 'stock', quantity: 12, cost_cents: 150000, price_cents: 13333 }); await api('PATCH', `/investments/${i.id}`, { price_cents: 16200 });
   const p = await api('GET', '/portfolio'); assert.equal(p.items[0].symbol, 'AAPL'); assert.equal(p.items[0].day_change_cents, 12 * (16200 - 13333));
