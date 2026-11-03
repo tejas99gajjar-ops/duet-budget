@@ -1,6 +1,7 @@
 // Implements the app's "/route" API on top of the local store + Supabase, so every view keeps calling api('GET','/summary') etc.
 import * as Dt from './dates.js';
 import * as M from './domain.js';
+import { paceAnalysis } from './pace.js';
 import * as S from './store.js';
 
 const bad = (m) => new Error(m);
@@ -105,7 +106,7 @@ route('PATCH', '/transactions/:id', async ({ id }, _q, body) => { const c = ctx(
 route('DELETE', '/transactions/:id', async ({ id }) => { const c = ctx(); if (!c.data.transactions.some((x) => x.id === Number(id))) throw bad('Not found'); await S.remove('transactions', Number(id)); return { ok: true }; });
 
 // budgets
-route('GET', '/budgets', async (_p, q) => { const c = ctx(); return { ...M.budgetsOverview(c.data, c.today, q.mode === 'all' ? 'all' : 'period', c.space.week_start), today: c.today }; });
+route('GET', '/budgets', async (_p, q) => { const c = ctx(), b = M.budgetsOverview(c.data, c.today, q.mode === 'all' ? 'all' : 'period', c.space.week_start); return { ...(b.mode === 'all' ? b : M.paceBudgets(b, paceAnalysis(c.data, c.today, { budgets: b }))), today: c.today }; });
 route('POST', '/budgets', async (_p, _q, b) => {
   const c = ctx(), cat = c.data.categories.find((x) => x.id === Number(b.category_id) && x.kind === 'expense'); if (!cat) throw bad('Choose a category');
   if (c.data.budgets.some((x) => x.category_id === cat.id)) throw bad('That category already has a budget');

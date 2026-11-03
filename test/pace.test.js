@@ -50,7 +50,7 @@ test('best savings rate so far, and the daily spend that repeats it', () => {
 test('when the best rate is already out of reach the line says so and gives the best still possible', () => {
   const data = { categories: cats, budgets: [], transactions: [...flat('2026-10', 31, 1000), tx('income', '2026-10-02', 100000), ...flat('2026-11', 12, 9000)] };   // Oct saves 69%; Nov already spent 1080
   const a = paceAnalysis(data, '2026-11-12'); assert.equal(a.target.status, 'passed');
-  const text = paceLines(a, fmt).map((l) => l.parts.map((p) => (Array.isArray(p) ? p[1] : p)).join('')).join(' | ');
+  const text = paceLines(a, fmt).map((l) => l.parts.map((p) => (Array.isArray(p) ? p[1] : p)).join('') + ' ' + (l.detail || []).join(' ')).join(' | ');
   assert.match(text, /out of reach this month/); assert.match(text, /best still possible is/);
 });
 
@@ -60,8 +60,8 @@ test('the two dashboard lines use the requested wording and precise figures', ()
   assert.equal(lines.length, 2);
   assert.match(text[0], /^Based on previous months' trend you spend about \$20\.00 per day and would save \$/);
   assert.match(text[0], /\(\d+\.\d%\) this month\.$/);
-  assert.match(text[1], /^Based on this month's trend your everyday spending is \$15\.00 per day\. To reach [\d.]+% savings, your best so far \(October\), keep everyday spending to about \$/);
-  assert.match(text[1], /for the remaining 20 days\./);
+  assert.match(text[1], /^Based on this month's trend you are spending \$15\.00 per day so far\. To reach [\d.]+% savings, your best so far \(October\), spend about \$/);
+  assert.match(text[1], /on everyday costs for the remaining 20 days\./);
 });
 
 test('the first, part-covered month only counts the days the app was in use', () => {

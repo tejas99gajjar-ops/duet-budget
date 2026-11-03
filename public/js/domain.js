@@ -59,31 +59,66 @@ export function budgetsOverview(data, today, mode = 'period', weekStart = 0) {
   return { overall, items, mode };
 }
 
-/** Rule-based tips: plain arithmetic on your own data. No LLM, no ML model, nothing leaves the device. */
-export function insights(data, today, budgets, monthRows, income, expense) {
-  const sp = data.space, out = [], fmt = (c) => new Intl.NumberFormat('en-US', { style: 'currency', currency: sp.currency }).format(c / 100);
-  const hot = budgets.items.filter((i) => i.pct >= 0.8 && i.period === 'monthly').sort((a, b) => b.pct - a.pct)[0];
-  if (hot?.status === 'over') out.push({ tone: 'bad', icon: '⚠️', text: `You are over your ${hot.category?.name} budget by ${fmt(hot.spent_cents - hot.limit_cents)}.` });
-  else if (hot) out.push({ tone: 'warn', icon: '⚠️', text: `You've spent ${Math.round(hot.pct * 100)}% of your ${hot.category?.name} budget with ${hot.days_left} days left (safe pace ${fmt(hot.safe_per_day_cents)}/day).` });
-  const { y: ty, m: tm, d: dom } = Dt.parse(today), dim = Dt.daysInMonth(ty, tm);
-  if (dom >= 5 && expense > 0) {
-    const projected = Math.round((expense / dom) * dim), o = budgets.overall;
+/** Month-end view for budgets: what each is on course for, what is still due and the everyday spend that keeps it inside. The numbers are the Spending pace screen's, so every screen agrees. */
+export function paceBudgets(budgets, pace) {
+  if (!pace?.ok || budgets.mode === 'all') return budgets;
+  const byCat = new Map(pace.cats.map((c) => [c.id, c]));
+  const items = budgets.items.map((i) => { const c = i.period === 'monthly' ? byCat.get(i.category_id) : null;
+    if (!c) return i; const scheduledOnly = (c.everydayUsual ?? 0) < 1 && c.everydaySpent === 0 && c.oneOffs === 0 && (c.upcoming.length > 0 || c.paid.length > 0);   // a budget that only holds scheduled payments has no "everyday" figure
+    return { ...i, proj_cents: Math.round(c.proj), due_cents: Math.round(c.upcomingSum), everyday_safe_cents: !scheduledOnly && c.safeEveryday != null ? Math.round(c.safeEveryday) : null, scheduled_only: scheduledOnly, pace_status: c.status }; });
+  let overall = budgets.overall;
+  if (overall) { const n = pace.now, room = overall.limit_cents - n.spent - n.upcoming - n.reserve;
+    overall = { ...overall, proj_cents: Math.round(n.projSpend), due_cents: Math.round(n.upcoming), everyday_safe_cents: pace.left > 0 ? Math.max(0, Math.round(room / pace.left)) : null, pace_status: n.projSpend > overall.limit_cents ? 'over' : n.projSpend > 0.85 * overall.limit_cents ? 'watch' : 'ok' }; }
+  return { ...budgets, items, overall };
+}
+
+/** Rule-based tips: plain arithmetic on your own data. No LLM, no ML model, nothing leaves the device. When there is enough history they use the same engine as the Spending pace screen. */
+export function insights(data, today, budgets, monthRows, income, expense, pace = null) {
+  const sp = data.space, out = [], fmt = (c) => new Intl.NumberFormat('en-US', { style: 'currency', currency: sp.currency }).format(c / 100), fmt0 = (c) => new Intl.NumberFormat('en-US', { style: 'currency', currency: sp.currency, maximumFractionDigits: 0 }).format(c / 100);
+  const { y: ty, m: tm, d: dom } = Dt.parse(today), dim = Dt.daysInMonth(ty, tm), ok = !!pace?.ok, o = budgets.overall;
+  // 1. the budget that needs a look
+  if (ok) {
+    const worst = pace.cats.filter((c) => c.limit != null).sort((a, b) => b.proj / b.limit - a.proj / a.limit)[0];
+    if (worst && (worst.status === 'over' || worst.spent / worst.limit >= 0.8)) {
+      const due = worst.upcomingSum > 0 ? ` after ${fmt0(worst.upcomingSum)} still due` : '', safe = worst.safeEveryday != null && pace.left > 0 ? ` Keep everyday spending to about ${fmt(worst.safeEveryday)} per day${due}.` : '';
+      if (worst.spent > worst.limit) out.push({ tone: 'bad', icon: '⚠️', text: `You are over your ${worst.name} budget by ${fmt(worst.spent - worst.limit)}.` });
+      else if (worst.status === 'over') out.push({ tone: 'warn', icon: '⚠️', text: `${worst.name} is on course for ${fmt(worst.proj)}, ${fmt(worst.overBy)} over its ${fmt(worst.limit)} budget.${safe}` });
+      else out.push({ tone: 'warn', icon: '⚠️', text: `You've used ${Math.round((worst.spent / worst.limit) * 100)}% of your ${worst.name} budget and are on course to finish at ${fmt(worst.proj)} of ${fmt(worst.limit)}.${safe}` });
+    }
+  } else {
+    const hot = budgets.items.filter((i) => i.pct >= 0.8 && i.period === 'monthly').sort((a, b) => b.pct - a.pct)[0];
+    if (hot?.status === 'over') out.push({ tone: 'bad', icon: '⚠️', text: `You are over your ${hot.category?.name} budget by ${fmt(hot.spent_cents - hot.limit_cents)}.` });
+    else if (hot) out.push({ tone: 'warn', icon: '⚠️', text: `You've spent ${Math.round(hot.pct * 100)}% of your ${hot.category?.name} budget with ${hot.days_left} days left (safe pace ${fmt(hot.safe_per_day_cents)}/day).` });
+  }
+  // 2. where the month is heading
+  if (ok && pace.hasPrior) {
+    const n = pace.now, over = o && n.projSpend > o.limit_cents;
+    out.push({ tone: over ? 'warn' : 'info', icon: '📈', text: `On course to spend about ${fmt(n.projSpend)} this month${n.upcoming > 0 ? `, counting ${fmt(n.upcoming)} of payments still due` : ''}${o ? (over ? `, ${fmt(n.projSpend - o.limit_cents)} over your ${fmt(o.limit_cents)} budget` : `, within your ${fmt(o.limit_cents)} budget`) : ''}.` });
+  } else if (dom >= 5 && expense > 0) {
+    const projected = Math.round((expense / dom) * dim);
     out.push({ tone: o && projected > o.limit_cents ? 'warn' : 'info', icon: '📈', text: `At this pace you'll spend about ${fmt(projected)} this month${o ? (projected > o.limit_cents ? `, ${fmt(projected - o.limit_cents)} over your ${fmt(o.limit_cents)} budget` : `, within your ${fmt(o.limit_cents)} budget`) : ''}.` });
   }
-  const prevKey = Dt.addMonthKey(Dt.monthOf(today), -1), prev = between(data, prevKey + '-01', Dt.monthEnd(prevKey + '-01'));
-  const cur = sumBy(monthRows, 'category_id', 'expense'), old = sumBy(prev, 'category_id', 'expense'); let best = null;
-  for (const [id, c] of cur) { const o = old.get(id) || 0, grow = c - o; if (o > 0 && grow > 2000 && c / o >= 1.25 && (!best || grow > best.grow)) best = { id, grow, pct: c / o - 1 }; }
-  if (best) { const cat = data.categories.find((c) => c.id === best.id); out.push({ tone: 'info', icon: '🔍', text: `${cat?.name || 'A category'} is up ${Math.round(best.pct * 100)}% (${fmt(best.grow)}) versus last month's total.` }); }
-  if (income > 0) out.push({ tone: expense / income > 0.9 ? 'warn' : 'good', icon: '💰', text: `You've kept ${Math.max(0, Math.round((1 - expense / income) * 100))}% of this month's income so far.` });
+  // 3. the category whose everyday spending has moved most against its usual
+  if (ok && pace.curDays >= 5) {
+    const mover = pace.cats.filter((c) => c.change != null && c.change >= 0.25 && c.everydayUsual > 0 && (c.perDayEveryday - c.everydayUsual) * pace.dim > 2000).sort((a, b) => (b.perDayEveryday - b.everydayUsual) - (a.perDayEveryday - a.everydayUsual))[0];
+    if (mover) out.push({ tone: 'info', icon: '🔍', text: `${mover.name} everyday spending is up ${Math.round(mover.change * 100)}%: ${fmt(mover.perDayEveryday)} a day against your usual ${fmt(mover.everydayUsual)}.` });
+  } else if (!ok) {
+    const prevKey = Dt.addMonthKey(Dt.monthOf(today), -1), prev = between(data, prevKey + '-01', Dt.monthEnd(prevKey + '-01'));
+    const cur = sumBy(monthRows, 'category_id', 'expense'), old = sumBy(prev, 'category_id', 'expense'); let best = null;
+    for (const [id, c] of cur) { const oo = old.get(id) || 0, grow = c - oo; if (oo > 0 && grow > 2000 && c / oo >= 1.25 && (!best || grow > best.grow)) best = { id, grow, pct: c / oo - 1 }; }
+    if (best) { const cat = data.categories.find((c) => c.id === best.id); out.push({ tone: 'info', icon: '🔍', text: `${cat?.name || 'A category'} is up ${Math.round(best.pct * 100)}% (${fmt(best.grow)}) versus last month's total.` }); }
+  }
+  // 4. income kept so far, with where it should end up
+  if (income > 0) { const kept = Math.max(0, Math.round((1 - expense / income) * 100)); out.push({ tone: expense / income > 0.9 ? 'warn' : 'good', icon: '💰', text: `You've kept ${kept}% of the ${fmt0(income)} earned so far this month${ok && pace.now.projRate != null && pace.hasPrior ? `; on course to finish near ${Math.round(Math.max(0, pace.now.projRate) * 100)}%${pace.now.incomeBasis === 'typical' ? ' of your usual income' : ''}` : ''}.` }); }
   return out.slice(0, 3);
 }
 
 export function summary(data, today) {
   const mkey = Dt.monthOf(today), rows = between(data, mkey + '-01', Dt.monthEnd(today));
   const income = total(rows, 'income'), expense = total(rows, 'expense'), wallets = walletBalances(data);
-  const budgets = budgetsOverview(data, today, 'period', data.space.week_start);
+  const budgets0 = budgetsOverview(data, today, 'period', data.space.week_start), pace = paceAnalysis(data, today, { budgets: budgets0 }), budgets = paceBudgets(budgets0, pace);
   return { today, month: mkey, net_worth_cents: wallets.reduce((s, w) => s + w.balance_cents, 0), income_cents: income, expense_cents: expense,
-    savings_rate: income > 0 ? (income - expense) / income : null, budgets, recent: sortTx(data.transactions).slice(0, 8).map((t) => shapeTx(data, t)), insights: insights(data, today, budgets, rows, income, expense), pace: paceAnalysis(data, today, { budgets }) };
+    savings_rate: income > 0 ? (income - expense) / income : null, budgets, recent: sortTx(data.transactions).slice(0, 8).map((t) => shapeTx(data, t)), insights: insights(data, today, budgets, rows, income, expense, pace), pace };
 }
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

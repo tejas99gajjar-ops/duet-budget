@@ -85,7 +85,9 @@ function findCommitments(priorMonths, rules, meanDaily, catName, today, dim) {
   }
   const out = [];
   for (const cl of clusters) {
-    const months = cl.perMonth.size, maxPer = Math.max(...cl.perMonth.values());
+    const months = cl.perMonth.size; let maxPer = 1;
+    const perMonthDays = new Map(); for (const it of cl.items) { if (!perMonthDays.has(it.month)) perMonthDays.set(it.month, []); perMonthDays.get(it.month).push(Dt.parse(it.date).d); }
+    for (const days of perMonthDays.values()) if (days.length > 1 && Math.max(...days) - Math.min(...days) > DAY_TOL) maxPer = 3;     // spread over the month: a habit
     // a payment smaller than a normal day must be proven more: the same note in two months, or any look-alike in three (so everyday small buys are not mistaken for bills)
     const small = median(cl.amounts) < minAmt, proven = !small || (cl.names.size > 0 && months >= 2) || months >= 3;
     if (maxPer > 2 || !((months >= 2 && proven) || (cl.tag && months >= 1))) continue;
@@ -202,8 +204,18 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
 
   // ---- this month, in three buckets
   const flexUsual = weighted(priorSplit, ({ p, s }) => s.flex / p.days), lumpUsual = weighted(priorSplit, ({ s }) => s.lump) || 0;
-  const flexNow = nowSplit.flex / covered, w = covered / (covered + 10), flexBlend = flexUsual != null ? w * flexNow + (1 - w) * flexUsual : flexNow;
-  const upcoming = commits.filter((c) => c.status !== 'paid'), upcomingSum = sum(upcoming.map((c) => c.amount * (c.count || 1))), reserve = Math.max(0, lumpUsual - nowSplit.lump) * (left / dim);
+  if (out.usual) { out.usual.everyday = flexUsual ?? out.usual.perDay; out.usual.other = out.usual.spend - (flexUsual ?? 0) * dim; }   // the rest of a usual month: fixed bills and one-offs
+  const flexNow = nowSplit.flex / covered, w = covered / (covered + 10);
+  // Each budget is projected on its own and the month as a whole is their sum, so the overall figures and the budget-by-budget figures can never disagree.
+  const catRates = (id) => {
+    const nowC = nowSplit.byCat.get(id) || { fixed: 0, lump: 0, flex: 0, lumps: [] }, priorC = priorSplit.map(({ p, s }) => ({ p, c: s.byCat.get(id) || { fixed: 0, lump: 0, flex: 0 } }));
+    const flexUsualC = priorC.length ? weighted(priorC, ({ p, c }) => c.flex / p.days) : null, lumpUsualC = priorC.length ? weighted(priorC, ({ c }) => c.lump) || 0 : 0, totalUsualC = priorC.length ? weighted(priorC, ({ p, c }) => (c.fixed + c.lump + c.flex) / p.days) : null;
+    const flexNowC = nowC.flex / covered;
+    return { nowC, priorC, flexUsualC, lumpUsualC, totalUsualC, flexNowC, rateC: flexUsualC != null ? w * flexNowC + (1 - w) * flexUsualC : flexNowC, resC: Math.max(0, lumpUsualC - nowC.lump) * (left / dim) };
+  };
+  const catIds = new Set([...nowSplit.byCat.keys(), ...priorSplit.flatMap(({ s }) => [...s.byCat.keys()]), ...commits.map((c) => c.catId)]), rates = new Map([...catIds].map((id) => [id, catRates(id)]));
+  const flexBlend = sum([...rates.values()].map((r) => r.rateC));
+  const upcoming = commits.filter((c) => c.status !== 'paid'), upcomingSum = sum(upcoming.map((c) => c.amount * (c.count || 1))), reserve = sum([...rates.values()].map((r) => r.resC));
   const projSpend = cur.expense + upcomingSum + reserve + flexBlend * left;
   const perDayNow = cur.expense / covered, expIncome = Math.max(cur.income, estIncome || 0), incomeBasis = cur.income >= (estIncome || 0) && cur.income > 0 ? 'received' : 'typical';
   out.now = { spent: cur.expense, income: cur.income, perDay: perDayNow, everydayPerDay: flexNow, blendPerDay: flexBlend, fixedPaid: nowSplit.fixed, oneOffs: nowSplit.lump, everydaySpent: nowSplit.flex, upcoming: upcomingSum, reserve, projSpend, expIncome, incomeBasis, projSaves: expIncome ? expIncome - projSpend : null, projRate: expIncome ? (expIncome - projSpend) / expIncome : null, usualEveryday: flexUsual };
@@ -216,36 +228,35 @@ export function paceAnalysis(data, today, { budgets = null, months = 6 } = {}) {
     // the reserve for unplanned big purchases is an estimate: if only that makes the goal unreachable, say the goal needs those to stay away rather than call it impossible
     const usable = allowance > 0 ? allowance : afterBills > 0 ? afterBills : null, needed = left > 0 && usable != null ? usable / left : null;
     out.best = { rate: best.rate, key: best.key };
-    out.target = { spend: targetSpend, allowance, perDayNeeded: needed, reserveDropped: allowance <= 0 && afterBills > 0, status: afterBills <= 0 ? 'passed' : needed != null && flexBlend <= needed ? 'on-track' : 'tight', bestNowRate: (expIncome - cur.expense - upcomingSum) / expIncome, afterBills };
+    out.target = { spend: targetSpend, allowance, perDayNeeded: needed, reserveDropped: allowance <= 0 && afterBills > 0, status: afterBills <= 0 ? 'passed' : projSpend <= targetSpend + 0.5 ? 'on-track' : 'tight', bestNowRate: (expIncome - cur.expense - upcomingSum) / expIncome, afterBills };
   }
   // ---- shape of the days, on variable spending (fixed payments removed so a rent day is not read as a spike)
   const priorVar = priorSplit.flatMap(({ p, s }) => Array.from(s.varDaily.slice(p.offset, p.offset + p.days)));
   out.dailyPrior = priorVar; out.dailyNow = Array.from(nowSplit.varDaily.slice(s0 - 1, day));
   out.skewPrior = dayStats(priorVar); out.skewNow = dayStats(out.dailyNow);
   const pool = dayStats([...priorVar, ...out.dailyNow]); out.skewAll = pool;
-  if (pool && pool.spikeDays && left > 0) { const rate = pool.spikeDays / pool.n, expect = Math.round(rate * left); out.spikePlan = { expected: expect, mean: pool.spikeMean }; if (out.target && out.target.allowance > 0 && left > expect) out.spikePlan.ordinaryCap = Math.max(0, (out.target.allowance - expect * pool.spikeMean) / (left - expect)); }
+  if (pool && pool.spikeDays && left > 0) out.spikePlan = { reserve };   // big days are already allowed for in the reserve; no second per-day figure is invented
 
   // ---- curves for the chart (index 0 = day 1): a usual month, this month, and the projection with each known payment as a step on its day
-  const padded = out.prior.map((p) => [...new Array(p.offset).fill(0), ...p.daily]), priorCum = [];
-  for (let d = 0; d < dim; d++) { let t = 0, k = 0; for (const p of padded) if (d < p.length) { t += sum(p.slice(0, d + 1)); k++; } priorCum.push(k ? t / k : null); }
+  // a usual month = the same recency weights as the usual daily spend; a shorter month carries on at its own daily rate, and days before the app was first used are filled at that rate too
+  const priorCum = [];
+  const series = out.prior.map((p) => { const full = [...new Array(p.offset).fill(p.perDay), ...p.daily]; let run2 = 0; const cum = Array.from({ length: dim }, (_, d) => { run2 += d < full.length ? full[d] : p.perDay; return run2; }), k = cum[dim - 1] > 0 ? (p.perDay * dim) / cum[dim - 1] : 1; return cum.map((v) => v * k); });   // scaled so every month ends at its own daily rate x days, which is what the usual month is built from
+  for (let d = 0; d < dim; d++) priorCum.push(series.length ? weighted(series, (c) => c[d]) : null);
   const curCum = []; let run = 0; for (let d = 0; d < dim; d++) { if (d < day) { run += cur.daily[d]; curCum.push(run); } else curCum.push(null); }
   const path = new Array(dim).fill(null); let acc = run; path[day - 1] = acc;
-  const stepDays = new Map(); for (const c of upcoming) for (const dt of c.pending?.length ? c.pending : [c.date]) { const dd = c.status === 'late' && dt < today ? day + 1 : Dt.parse(dt).d; stepDays.set(dd, (stepDays.get(dd) || 0) + c.amount); }
+  const stepDays = new Map(); for (const c of upcoming) for (const dt of c.pending?.length ? c.pending : [c.date]) { const dd = Math.min(dim, Math.max(Dt.parse(dt).d, Math.min(dim, day + 1))); stepDays.set(dd, (stepDays.get(dd) || 0) + c.amount); }
+  if (left === 0) { path[day - 1] = acc + (stepDays.get(dim) || 0); }
   for (let d = day; d < dim; d++) { acc += flexBlend + (left ? reserve / left : 0) + (stepDays.get(d + 1) || 0); path[d] = acc; }
   out.cum = { prior: priorCum, cur: curCum, proj: path, projEnd: projSpend, targetEnd: out.target ? out.target.spend : null };
 
   // ---- category by category
   const bmap = new Map(); if (budgets) for (const b of budgets.items) if (b.period === 'monthly' && b.category_id != null) bmap.set(b.category_id, b);
-  const catIds = new Set([...nowSplit.byCat.keys(), ...priorSplit.flatMap(({ s }) => [...s.byCat.keys()]), ...commits.map((c) => c.catId)]);
   out.cats = [];
   for (const id of catIds) {
     const info = catInfo.get(id) || { name: 'Other', icon: '🏷️', color: '#8B97B3' };
-    const nowC = nowSplit.byCat.get(id) || { fixed: 0, lump: 0, flex: 0, lumps: [] }, spent = nowC.fixed + nowC.lump + nowC.flex;
-    const priorC = priorSplit.map(({ p, s }) => ({ p, c: s.byCat.get(id) || { fixed: 0, lump: 0, flex: 0 } }));
-    const flexUsualC = priorC.length ? weighted(priorC, ({ p, c }) => c.flex / p.days) : null, lumpUsualC = priorC.length ? weighted(priorC, ({ c }) => c.lump) || 0 : 0, totalUsualC = priorC.length ? weighted(priorC, ({ p, c }) => (c.fixed + c.lump + c.flex) / p.days) : null;
+    const { nowC, priorC, flexUsualC, totalUsualC, flexNowC, rateC, resC } = rates.get(id), spent = nowC.fixed + nowC.lump + nowC.flex;
     const myCommits = commits.filter((c) => c.catId === id), up = myCommits.filter((c) => c.status !== 'paid'), upSum = sum(up.map((c) => c.amount * (c.count || 1)));
     if (spent <= 0 && !(totalUsualC > 0) && !up.length) continue;
-    const flexNowC = nowC.flex / covered, rateC = flexUsualC != null ? w * flexNowC + (1 - w) * flexUsualC : flexNowC, resC = Math.max(0, lumpUsualC - nowC.lump) * (left / dim);
     const proj = spent + upSum + resC + rateC * left;
     // spread: daily swings of the variable part, over the days left
     const varDaily = [...priorC.flatMap(({ p }) => { const arr = new Array(p.days).fill(0); for (const t of p.txs) { if ((t.category_id ?? 0) === id && !isFixedPrior(t)) { const dd = Dt.parse(t.date).d - 1 - p.offset; if (dd >= 0 && dd < p.days) arr[dd] += t.amount_cents; } } return arr; }), ...(() => { const arr = new Array(covered).fill(0); for (const t of curExpense) if ((t.category_id ?? 0) === id && !isFixedNow(t)) { const dd = Dt.parse(t.date).d - s0; if (dd >= 0 && dd < covered) arr[dd] += t.amount_cents; } return arr; })()];
@@ -282,21 +293,27 @@ export const dueText = (x, fmt) => (x.count > 1 ? `${x.name} ${fmt(x.amount)} ×
 export function paceLines(a, fmt) {
   const lines = [];
   if (!a?.ok) return lines;
+  // each line has a short headline (parts) and the working behind it (detail), so it reads at a glance and still explains every figure
   if (a.usual) {
-    const u = a.usual;
+    const u = a.usual, ev = u.everyday != null && u.everyday < u.perDay - 1;
     lines.push({ id: 'usual', icon: '🗓️', parts: u.saves != null
       ? [`Based on previous months' trend you spend about `, ['b', `${fmt(u.perDay)} per day`], ` and would save `, [u.saves >= 0 ? 'pos' : 'neg', `${fmt(u.saves)} (${pc1(u.rate)})`], ` this month.`]
-      : [`Based on previous months' trend you spend about `, ['b', `${fmt(u.perDay)} per day`], `. Log your income to see what that saves.`] });
+      : [`Based on previous months' trend you spend about `, ['b', `${fmt(u.perDay)} per day`], `. Log your income to see what that saves.`],
+      detail: ev ? [`About ${fmt(u.everyday)} a day of that is everyday spending; the rest is fixed bills and one-offs.`] : [] });
   }
-  const n = a.now, t = a.target, up = a.commit.upcoming;
-  const everyday = [`Based on this month's trend your everyday spending is `, ['b', `${fmt(n.everydayPerDay)} per day`], n.fixedPaid > 0 ? ` (not counting ${fmt(n.fixedPaid)} of fixed payments already made)` : '', `. `];
+  const n = a.now, t = a.target, up = a.commit.upcoming, other = n.fixedPaid + n.oneOffs;
+  const head = [`Based on this month's trend you are spending `, ['b', `${fmt(n.perDay)} per day`], ` so far`];
+  const base = [];
+  if (other > 0) base.push(`${fmt(n.everydayPerDay)} a day of that is everyday spending; ${fmt(other)} of fixed payments and one-offs already made are counted once, not repeated daily.`);
+  if (up.length && a.left > 0) base.push(`${fmt(n.upcoming)} is still due: ${nameList(up, 3)}.`);
   if (t && a.best) {
     const when = `${pc1(a.best.rate)} savings, your best so far (${monthName(a.best.key)})`;
-    if (t.status === 'passed') lines.push({ id: 'now', icon: '⏱️', parts: [...everyday, `Between what is spent and what is still due, the ${fmt(t.spend)} that ${when} allows is already used up, so that rate is out of reach this month. The best still possible is `, ['b', pc1(Math.max(0, t.bestNowRate))], `.`] });
-    else if (a.left === 0) lines.push({ id: 'now', icon: '⏱️', parts: [...everyday, `This is the last day of the month: you will finish at about `, ['b', pc1(n.projRate ?? 0)], ` savings against your best of ${pc1(a.best.rate)}.`] });
-    else lines.push({ id: 'now', icon: '⏱️', parts: [...everyday, `To reach ${when}, keep everyday spending to about `, ['b', `${fmt(t.perDayNeeded)} per day`], ` for the remaining ${a.left} day${a.left === 1 ? '' : 's'}`, up.length ? `, after setting aside ${fmt(a.now.upcoming)} for ${nameList(up)}` : '', `.`, t.reserveDropped ? ' That only works if no unplanned big purchase turns up.' : '', t.status === 'on-track' ? [' ok', ` At the pace we expect (${fmt(n.blendPerDay)} per day, blending your usual with this month so far) you are under that.`] : ` At the pace we expect (${fmt(n.blendPerDay)} per day, blending your usual with this month so far) you would be over it.`] });
+    if (t.status === 'passed') lines.push({ id: 'now', icon: '⏱️', parts: [...head, `. The ${fmt(t.spend)} that ${when} allows is already used up between what is spent and what is still due, so that rate is out of reach this month. The best still possible is `, ['b', pc1(Math.max(0, t.bestNowRate))], `.`], detail: base });
+    else if (a.left === 0) lines.push({ id: 'now', icon: '⏱️', parts: [...head, `. This is the last day of the month: you will finish at about `, ['b', pc1(n.projRate ?? 0)], ` savings against your best of ${pc1(a.best.rate)}.`], detail: base });
+    else lines.push({ id: 'now', icon: '⏱️', parts: [...head, `. To reach ${when}, spend about `, ['b', `${fmt(t.perDayNeeded)} per day`], ` on everyday costs for the remaining ${a.left} day${a.left === 1 ? '' : 's'}.`],
+      detail: [...base, `At your expected everyday pace of ${fmt(n.blendPerDay)} a day (your usual blended with this month so far) you would finish at ${pc1(n.projRate)} savings${t.status === 'on-track' ? ', on target' : ', short of that'}.${t.reserveDropped ? ' That only works if no unplanned big purchase turns up.' : ''}`], status: t.status });
   } else if (a.hasPrior === false) {
-    lines.push({ id: 'now', icon: '⏱️', parts: [`This month your everyday spending is `, ['b', `${fmt(n.everydayPerDay)} per day`], n.fixedPaid > 0 ? ` (not counting ${fmt(n.fixedPaid)} of fixed payments already made)` : '', `. Once you have a full previous month, we will compare it with your best savings rate.`] });
+    lines.push({ id: 'now', icon: '⏱️', parts: [...head, `. Once you have a full previous month, we will compare it with your best savings rate.`], detail: base });
   }
   return lines;
 }
@@ -322,7 +339,7 @@ export function paceAdvice(a, fmt) {
       text: `${up.map((x) => dueText(x, fmt)).slice(0, 3).join('; ')}${up.length > 3 ? ` and ${up.length - 3} more` : ''}. Expect a jump on ${next.status === 'late' ? 'the day it lands' : `the ${ordinal(next.day)}`}${t && t.perDayNeeded != null && a.left > 0 ? `; on the other days keep everyday spending to about ${fmt(Math.max(0, t.perDayNeeded))} to stay on your savings goal` : ''}.` });
   } else if (a.left > 0 && (paid.length || c.items.length)) out.push({ tone: 'good', icon: '✅', title: 'Nothing fixed is left to pay', text: 'Every regular payment we expected this month has been made, so the rest of the month is everyday spending only.' });
   // 3. already paid, not extrapolated
-  if (paid.length || n.fixedPaid > 0) out.push({ tone: 'info', icon: '🧾', title: 'Already paid, not repeated', text: `${fmt(n.fixedPaid)} of fixed payments${paid.length ? ` (${paid.slice(0, 3).map((x) => `${x.name} ${fmt(x.paidAmount)} on the ${ordinal(Dt.parse(x.paidDate).d)}`).join(', ')}${paid.length > 3 ? ` and ${paid.length - 3} more` : ''})` : ''} are done for the month. They are counted once and are not spread over the days left, so they do not inflate your daily pace.` });
+  if (paid.length || n.fixedPaid > 0) out.push({ tone: 'info', icon: '🧾', title: 'Already paid, not repeated', text: `${fmt(n.fixedPaid)} of fixed payments${paid.length ? ` (${paid.slice(0, 3).map((x) => `${x.name} ${fmt(x.paidTotal ?? x.paidAmount)} on the ${ordinal(Dt.parse(x.paidDate).d)}`).join(', ')}${paid.length > 3 ? ` and ${paid.length - 3} more` : ''}${n.fixedPaid - sum(paid.map((x) => x.paidTotal ?? x.paidAmount)) > 1 ? `, plus ${fmt(n.fixedPaid - sum(paid.map((x) => x.paidTotal ?? x.paidAmount)))} of other recurring entries` : ''})` : ''} are done for the month. They are counted once and are not spread over the days left, so they do not inflate your daily pace.` });
   // 4. one-offs
   if (c.lumps.length) out.push({ tone: 'info', icon: '🛍️', title: 'One-off spending left out of the daily pace', text: `${c.lumps.slice(0, 2).map((x) => `${fmt(x.amount)}${x.note ? ` (${x.note})` : ''} on the ${ordinal(Dt.parse(x.date).d)}`).join(' and ')}${c.lumps.length > 2 ? ` and ${c.lumps.length - 2} more` : ''} were single big purchases, so they are not repeated each day.` });
   if (n.reserve > 0) out.push({ tone: 'info', icon: '🧯', title: 'Room for the unexpected', text: `Past months had about ${fmt(c.lumpUsual)} of unplanned big purchases. ${fmt(n.reserve)} of that is set aside for the days left; spend less than that and your savings improve.` });
@@ -337,10 +354,10 @@ export function skewInsight(s, fmt, plan = null) {
   const label = skewLabel(s), zero = s.zeroShare >= 0.25 ? ` ${s.zeroDays} no-spend days (${Math.round(s.zeroShare * 100)}%) are helping.` : '';
   if (label === 'spiky' || label === 'leaning spiky') {
     const strong = label === 'spiky';
-    return { tone: strong ? 'warn' : 'info', icon: '🎢', title: strong ? 'Spending comes in bursts' : 'Slightly bursty', text: `${s.spikeDays} big day${s.spikeDays === 1 ? '' : 's'} ${s.spikeDays === 1 ? 'makes' : 'make'} up ${Math.round(s.spikeShare * 100)}% of spend (about ${fmt(s.spikeMean)} each) while ${s.median > 0 ? `a typical day is only ${fmt(s.median)}` : 'most days have no spending at all'}. ${strong ? 'A few controlled big purchases will move your savings more than trimming small daily costs.' : 'Watch the occasional large day.'}${zero}${plan && plan.expected ? ` To hold your target, expect about ${plan.expected} big day${plan.expected === 1 ? '' : 's'} and keep ordinary days to ${plan.ordinaryCap != null ? fmt(plan.ordinaryCap) : 'less than usual'}.` : ''}` };
+    return { tone: strong ? 'warn' : 'info', icon: '🎢', title: strong ? 'Spending comes in bursts' : 'Slightly bursty', text: `${s.spikeDays} big day${s.spikeDays === 1 ? '' : 's'} ${s.spikeDays === 1 ? 'makes' : 'make'} up ${Math.round(s.spikeShare * 100)}% of spend (about ${fmt(s.spikeMean)} each) while ${s.median > 0 ? `a typical day is only ${fmt(s.median)}` : 'most days have no spending at all'}. ${strong ? 'A few controlled big purchases will move your savings more than trimming small daily costs.' : 'Watch the occasional large day.'}${zero}${plan && plan.reserve > 0 ? ` About ${fmt(plan.reserve)} is already set aside in your month-end figure for big purchases like these.` : ''}` };
   }
   if (label === 'big-day heavy') return { tone: 'info', icon: '🧱', title: 'Many large days, few small ones', text: `Most days are on the high side (typical ${fmt(s.median)}, average ${fmt(s.mean)}), so lowering the everyday level is what will help.${zero}` };
-  if (s.median === 0 && s.zeroShare >= 0.3) return { tone: 'good', icon: '✅', title: 'Steady, on some days only', text: `You spend on about ${s.n - s.zeroDays} of every ${s.n} days, averaging ${fmt(s.mean / (1 - s.zeroShare))} on those days (${fmt(s.mean)} a day overall). That regular rhythm, rather than one-off splurges, decides your savings.` };
+  if (s.median === 0 && s.zeroShare >= 0.3) return { tone: 'good', icon: '✅', title: 'Steady, on some days only', text: `You spend on about ${Math.max(1, Math.round((1 - s.zeroShare) * 10))} days in every 10, averaging ${fmt(s.mean / (1 - s.zeroShare))} on those days (${fmt(s.mean)} a day overall). That regular rhythm, rather than one-off splurges, decides your savings.` };
   return { tone: 'good', icon: '✅', title: 'Steady spender', text: `Most days land near ${fmt(s.median)} (average ${fmt(s.mean)}), so your daily level, not one-off splurges, decides your savings.${zero}` };
 }
 
@@ -352,7 +369,9 @@ export function catAdvice(c, fmt, a) {
   if (c.paid.length) out.push({ tone: 'info', icon: '🧾', text: `${c.paid.map((x) => `${x.name} ${fmt(x.amount)} on the ${ordinal(Dt.parse(x.date).d)}`).join(', ')} already paid. It is not spread over the days left.` });
   if (c.upcoming.length) out.push({ tone: 'warn', icon: '📅', text: `Still to come: ${c.upcoming.map((x) => dueText(x, fmt)).join('; ')}. Spend may jump that day.` });
   if (c.oneOffs > 0) out.push({ tone: 'info', icon: '🛍️', text: `${c.lumps.slice(0, 2).map((x) => `${fmt(x.amount)}${x.note ? ` (${x.note})` : ''} on the ${ordinal(Dt.parse(x.date).d)}`).join(' and ')} counted once, not repeated daily.` });
-  if (c.safeEveryday != null && a.left > 0) out.push({ tone: 'info', icon: '🎯', text: `${c.upcoming.length ? 'After the payment' + (c.upcoming.length > 1 ? 's' : '') + ' due, ' : ''}keep everyday spending here to about ${fmt(c.safeEveryday)} per day to stay inside the budget.` });
+  const onlyScheduled = (c.everydayUsual ?? 0) < 1 && c.everydaySpent === 0 && c.oneOffs === 0;
+  if (c.limit != null && onlyScheduled && (c.upcoming.length || c.paid.length)) { const left = c.limit - c.spent - c.upcomingSum; out.push({ tone: left < 0 ? 'warn' : 'info', icon: '🎯', text: left < 0 ? `The scheduled payments alone are ${fmt(-left)} more than this budget.` : `Only scheduled payments are expected here, which leaves ${fmt(left)} of the budget unused.` }); }
+  else if (c.safeEveryday != null && a.left > 0) out.push({ tone: 'info', icon: '🎯', text: `${c.upcoming.length ? `After the payment${c.upcoming.length > 1 ? 's' : ''} due, k` : 'K'}eep everyday spending here to about ${fmt(c.safeEveryday)} per day to stay inside the budget.` });
   if (c.change != null && Math.abs(c.change) >= 0.15) out.push({ tone: c.change > 0 ? 'warn' : 'good', icon: c.change > 0 ? '↑' : '↓', text: `Everyday spending is ${c.change > 0 ? 'up' : 'down'} ${Math.round(Math.abs(c.change) * 100)}% on your usual ${fmt(c.everydayUsual)} a day.` });
   if (c.label === 'spiky' && c.stats) out.push({ tone: 'info', icon: '🎢', text: `${c.stats.spikeDays} big day${c.stats.spikeDays === 1 ? '' : 's'} make ${Math.round(c.stats.spikeShare * 100)}% of the variable spending, so one purchase can swing the month.` });
   else if (c.label === 'steady' && c.stats?.reliable) out.push({ tone: 'good', icon: '〰️', text: 'Everyday spending here is steady from day to day.' });
