@@ -9,7 +9,7 @@ export const raw = (s) => new Safe(s);
 export const html = (el, safe) => { el.innerHTML = safe.s; };
 
 export const state = { boot: null, summaryDirty: true };
-export const APP_VERSION = 'v17 · pace numbers audited and unified · 2 Nov 2026';   // shown under "How are these made?" so it is easy to tell which version a device is running
+export const APP_VERSION = 'v18 · pots breakdown · 2 Nov 2026';   // shown under "How are these made?" so it is easy to tell which version a device is running
 
 import { request, downloadCsv } from './local-api.js';
 export { downloadCsv };

@@ -111,3 +111,18 @@ test('the copy of the recurring-edit SQL shipped to the browser matches the one 
   assert.ok(!/drop\s+table|drop\s+column|truncate|delete\s+from|update\s+public\.transactions/.test(low));
   assert.ok(/add column if not exists every/.test(low) && /create or replace function public\.run_recurring/.test(low));
 });
+
+test('the Pots breakdown adds up to the engine total, and says why a holding is left out', async () => {
+  const m = await import('../public/js/fire/breakdown.js').catch(() => null); if (!m) return;
+  const { runPlan, holdingValue } = await import('../public/js/fire/engine.js');
+  const p = normalizePlan(defaultPlan({ today: '2026-11-04' }));
+  p.holdings = [{ id: 'a', name: 'Equity', kind: 'mf', assetClass: 'equity', value: 500000, sips: [] }, { id: 'b', name: 'Mixed', kind: 'mf', assetClass: 'debt', mix: [{ cls: 'debt', pct: 60 }, { cls: 'equity', pct: 40 }], value: 300000, sips: [] },
+    { id: 'c', name: "Mother's fund", kind: 'mf', assetClass: 'equity', value: 200000, familyHeld: true, sips: [] }, { id: 'd', name: 'Flat', kind: 'property', value: 5000000, sips: [] }, { id: 'e', name: 'Switched off', kind: 'cash', value: 100000, include: false, sips: [] }];
+  const res = runPlan(p, { today: '2026-11-04' }); p.assumptions.includeFamilyFunds = false; const res2 = runPlan(p, { today: '2026-11-04' });
+  const rows = m.potsRows(p, res2), counted = rows.filter((r) => r.counted);
+  assert.equal(counted.reduce((s, r) => s + r.value, 0), res2.projection.potsTotal); assert.equal(res2.projection.potsTotal, 800000);
+  assert.match(rows.find((r) => r.id === 'c').reason, /family funds are left out/); assert.match(rows.find((r) => r.id === 'd').reason, /house/); assert.match(rows.find((r) => r.id === 'e').reason, /Switched off/);
+  assert.equal(res.projection.potsTotal, 1000000, 'with family funds counted the total rises by exactly that holding');
+  const byClass = {}; for (const r of counted) for (const c of r.comps) byClass[c.cls] = (byClass[c.cls] || 0) + r.value * c.w; assert.equal(Math.round(byClass.equity), 500000 + 120000); assert.equal(Math.round(byClass.debt), 180000);
+  void holdingValue;
+});

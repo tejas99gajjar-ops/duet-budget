@@ -9,6 +9,7 @@ import { compareScenarios } from './engine.js';
 import { modelChecks } from './checks.js';
 import { download } from './io.js';
 import { inr, inrC, inrF, pc } from './format.js';
+import { openPots } from './breakdown.js';
 
 let level = 1;           // 0 big picture · 1 step by step · 2 every number
 const sum = (a) => a.reduce((s, x) => s + x, 0);
@@ -79,7 +80,7 @@ export async function calc(root) {
         level === 2 ? table(['Withdrawal rate', 'Corpus needed'], Object.entries(t.classic).map(([r, v]) => [`${r}%`, inr(v)])) : '')}
       ${story(4, 'What will you have by then?',
         say(`You hold `, num(inr(res.projection.potsTotal)), ` today. Each kind of investment grows at its own pace, and we take away inflation to stay in today's money. You also keep investing `, num(inrF(m.sipNow)), ` a month, and the plan follows your loans, baby, house and other events year by year, including any year your pay does not cover costs.`),
-        analogy('Several fuel cans filling at different speeds, while a few small leaks (loans and events) drip out along the way.'),
+        analogy('Several fuel cans filling at different speeds, while a few small leaks (loans and events) drip out along the way.'), h`<button class="fx-link" data-act="pots">See every holding that makes up ${inr(res.projection.potsTotal)} →</button>`,
         big ? example('one investment growing', say(`Your `, num(big.name), ` is worth `, num(inrC(big.v0)), ` today and is expected to grow ${(big.nomRet).toFixed(1)}% a year. After inflation that is ${(big.rr * 100).toFixed(1)}%. In ${yrsTo} years: `, num(inrC(big.v0)), ` × ${(1 + big.rr).toFixed(3)} multiplied ${yrsTo} times = `, num(inrC(fv)), ` in today's money, before adding any SIPs.`)) : '',
         sipH ? example('a monthly SIP', say(`A SIP of `, num(inrF(sipH.s.amount)), ` a month into ${sipH.x.name} is ${inrC(sipH.s.amount * 12)} a year. Each year's amount grows for the years it stays invested at ${(rr * 100).toFixed(1)}% above inflation, so over ${yrsTo} years it becomes roughly `, num(inrC(sipFv)), ` in today's money. (A simple flat-SIP estimate; the planner follows your exact dates and step-ups.)`)) : '',
         level === 2 ? h`${table(['Investment', 'Value now', 'Grows', 'After inflation'], potRows)}<div style="height:10px"></div>${table(['Year', 'Income', 'Costs + EMIs', 'Invested', 'Pots'], pRows)}` : '',
@@ -113,6 +114,7 @@ export async function calc(root) {
     ${note('ⓘ', 'These are estimates from the assumptions you set. They are not financial, tax or legal advice.')}${fxNav('overview')}</div>`);
   bind(root, { click: {
     lvl: (el) => { level = Number(el.dataset.k); X.redraw(); },
+    pots: () => openPots(),
     csv: () => { const L = ['Section,Year,Age,Costs,Premiums+Events,Other income,Withdrawal,Worth today', ...t.rows.map((r) => ['Target', r.year, r.age, r.spend, r.premiums + r.events, r.passive, r.gross, r.pv].map((v) => (typeof v === 'number' ? Math.round(v) : v)).join(',')), '', 'Section,Year,Age,Invested,Cash flow,Retirement corpus', ...res.projection.rows.map((r) => ['Projection', r.year, r.age, r.saving, r.net, r.corpus ?? ''].map((v) => (typeof v === 'number' ? Math.round(v) : v)).join(','))]; download(`fire-calculation-${X.today()}.csv`, L.join('\n'), 'text/csv'); toast('CSV downloaded'); },
   } });
   void tile;

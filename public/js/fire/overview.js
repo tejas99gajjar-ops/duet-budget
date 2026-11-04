@@ -10,6 +10,7 @@ import { sectionHealth, reasons } from './health.js';
 import { ageStrip } from './charts.js';
 import { pickRetireAge, toggleBasis, openMethodPicker, openMenu, METHODS } from './actions.js';
 import { openWhatIf } from './whatif.js';
+import { openPots } from './breakdown.js';
 import { compareScenarios } from './engine.js';
 
 let stripMode = 'gap'; const ageCache = { hash: null, rows: null, running: false };
@@ -59,7 +60,7 @@ export async function overview(root) {
         <div class="fx-row" style="margin-top:14px;gap:10px"><a class="fx-btn small ghost" href="#/fire/detail/gap" style="flex:1">See how to close it</a><button class="fx-btn small" data-act="whatif" style="flex:1">Try what-if</button></div></div>`
       : h`<div class="fx-card good"><div class="ok" style="font-weight:700">✓ Surplus</div><div class="fx-big ok" style="margin:4px 0 6px">${inr(C(-g.amount))}</div><div class="fx-sub" style="color:var(--text)">${earliest && earliest < m.retireAge ? h`You could retire as early as <b>age ${earliest}</b>.` : 'Your plan covers the target at this retirement age.'}</div><button class="fx-btn small ghost" data-act="whatif" style="margin-top:12px">Try what-if</button></div>`}
     <div class="fx-card"><div class="fx-ch" style="margin-bottom:10px"><h3>Three ways we check this</h3><a class="fx-link" href="#/fire/detail/target">Open detail →</a></div>${methodCards}</div>
-    ${full ? h`<div class="fx-card"><div class="fx-ch"><h3>Pots · ${inr(potTotal)} today</h3><a class="fx-link" href="#/fire/inputs/assets">Edit →</a></div>
+    ${full ? h`<div class="fx-card"><div class="fx-ch"><h3>Pots · ${inr(potTotal)} today</h3><span class="fx-row" style="gap:12px"><button class="fx-link" data-act="pots">How is this worked out?</button><a class="fx-link" href="#/fire/inputs/assets">Edit →</a></span></div>
       ${potRows.length ? h`<div class="fx-split">${potRows.map(({ c, v }) => h`<i style="flex:${v};background:${CLASS_INFO[c].color}" title="${CLASS_INFO[c].label}"></i>`)}</div><div class="fx-legend" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px">${potRows.map(({ c, v }) => h`<span><i style="background:${CLASS_INFO[c].color}"></i>${CLASS_INFO[c].short} ${Math.round((v / potTotal) * 100)}% · ${inrC(v)}</span>`)}</div>` : h`<div class="fx-sub">Add your holdings to see how your money is spread.</div>`}</div>` : ''}
     ${full ? h`<div class="fx-card"><div class="fx-ch"><h3>Spending at ${m.retireAge} · ${inrC(annual)}/yr</h3>${srcChip(plan.spending.retirement?.monthly != null ? 'entered' : 'est')}</div>
       <div class="col" style="gap:12px">${buckets.map((b) => h`<div class="fx-row" style="gap:12px"><span style="width:92px;color:var(--muted);font-size:15px">${b.name}</span><div class="fx-bar grow" style="--fill:${b.color}"><i style="width:${Math.min(100, (b.v / (buckets[0].v || 1)) * 100)}%"></i></div><b style="width:58px;text-align:right">${inrC(b.v)}</b></div>`)}</div></div>` : ''}
@@ -79,6 +80,7 @@ export async function overview(root) {
 
   bind(root, { click: {
     view: (el) => FS.edit('settings', (x) => { x.viewMode = el.dataset.k; return x; }, { immediate: true, noUndo: true }),
+    pots: () => openPots(),
     basis: () => toggleBasis(), menu: () => openMenu(), method: () => openMethodPicker(), calc: () => { location.hash = '#/fire/detail/calc'; },
     whatif: () => openWhatIf(), recalc: async () => { toast('Recalculating…'); await X.ensureMc({ force: true }); },
     lever: (el) => openWhatIf(el.dataset.k === 'save' ? { extraMonthly: Math.round(close.extraMonthly / 500) * 500 } : el.dataset.k === 'earn' ? { incomeGrowthDeltaPct: Math.ceil(close.earnMoreDelta * 2) / 2 } : { spendCutMonthly: Math.ceil(close.lowerSpend / 500) * 500 }),

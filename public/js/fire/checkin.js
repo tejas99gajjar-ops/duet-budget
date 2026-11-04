@@ -9,10 +9,12 @@ import { holdingValue } from './engine.js';
 import { lineChart } from './charts.js';
 import { inr, inrC, pc, ago } from './format.js';
 import { openApplyDuet } from './duetsync.js';
+import { openPots } from './breakdown.js';
 
 const sum = (a) => a.reduce((s, x) => s + x, 0);
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
-const netWorth = (plan) => sum(plan.holdings.filter((x) => x.include !== false && x.kind !== 'property').map(holdingValue));
+// the money counted in the plan today: the same total as the Pots figure, so the two can never differ
+const netWorth = () => X.run().projection.potsTotal;
 export const snapSummary = () => { const plan = X.getPlan(), res = X.run(); return { netWorth: Math.round(netWorth(plan)), target: Math.round(res.gap.target), projected: Math.round(res.gap.projected), gap: Math.round(res.gap.amount), pct: res.gap.pct, status: res.gap.status, retireAge: res.meta.retireAge, takeHome: res.meta.takeHome, sip: res.meta.sipNow, date: X.today() }; };
 
 export function checkin(root) {
@@ -21,7 +23,7 @@ export function checkin(root) {
   const chart = ys.length > 2 ? lineChart(ys, xs, { color: '#7C5FE6', target: res.gap.target, w: 340, h: 170 }) : null;
   const delta = (a, b) => { const d = a - b; return h`<b class="${d >= 0 ? 'ok' : 'bad'}">${d >= 0 ? '+' : '−'}${inrC(Math.abs(d))}</b>`; };
   html(root, h`<div class="fx">${head({ kicker: 'FIRE PLANNER', title: 'Check-in', sub: 'Is real progress matching the plan?', right: statusChip(res.gap.status) })}
-    <div class="fx-card"><div class="fx-lbl">NET WORTH IN INVESTMENTS</div><div class="fx-big" style="font-size:clamp(28px,9vw,38px);margin:4px 0">${inr(now.netWorth)}</div>
+    <div class="fx-card"><div class="fx-lbl">NET WORTH IN INVESTMENTS</div><div class="fx-big" style="font-size:clamp(28px,9vw,38px);margin:4px 0">${inr(now.netWorth)}</div><button class="fx-link" data-act="pots" style="margin-bottom:6px">How is this worked out?</button>
       ${last ? h`<div class="fx-sub">Since <b style="color:var(--text)">${last.name}</b> (${when(last.created_at)}): ${delta(now.netWorth, last.summary.netWorth)} net worth · ${delta(now.projected, last.summary.projected)} projected corpus · gap ${delta(-now.gap, -last.summary.gap)}</div>` : h`<div class="fx-sub">Save a snapshot now to start tracking progress over time.</div>`}
       ${chart ? h`<div class="fx-chart" style="margin-top:12px">${chart}</div><div class="fx-legend"><span><i style="background:#7C5FE6"></i>Planned net worth (today's ₹)</span><span><i style="background:var(--fx-bad)"></i>Target</span></div>` : ''}</div>
     <div class="fx-grid2"><button class="fx-btn" data-act="snap">Save snapshot</button><button class="fx-btn ghost" data-act="rebase">Update from Duet</button></div>
@@ -30,6 +32,7 @@ export function checkin(root) {
     ${snaps.map((s) => h`<button class="fx-card" data-act="sn" data-id="${s.id}" style="text-align:left;width:100%"><div class="fx-row fx-between" style="gap:10px"><div class="grow" style="min-width:0"><b style="font-size:18px">${s.name}</b><div class="fx-sub">${when(s.created_at)} · ${ago(s.created_at)}</div></div>${s.summary?.status ? statusChip(s.summary.status) : ''}</div>${s.summary?.projected != null ? h`<div class="fx-row fx-between fx-sub" style="margin-top:10px"><span>Projected ${inrC(s.summary.projected)}</span><span>Target ${inrC(s.summary.target)}</span><span>${pc(s.summary.pct)}</span></div>` : ''}${s.note ? h`<div class="fx-sub" style="margin-top:6px">${s.note}</div>` : ''}</button>`)}
     ${!snaps.length ? h`<div class="fx-note"><span>📭</span><div>No snapshots yet.</div></div>` : ''}${fxNav('checkin')}</div>`);
   bind(root, { click: {
+    pots: () => openPots(),
     snap: () => openForm({ title: 'Save snapshot', sub: 'Freezes the plan and its key numbers as of today', values: { name: `${new Date().toLocaleString('en-IN', { month: 'short', year: 'numeric' })} check-in`, note: '' }, fields: [{ name: 'name', label: 'Name', type: 'text', required: true, maxlength: 40 }, { name: 'note', label: 'Note (optional)', type: 'textarea' }],
       onSave: async (v) => { await FS.takeSnapshot(v.name.trim(), v.note || '', snapSummary()); toast('Snapshot saved'); } }),
     rebase: () => (D.hasDuet() ? openApplyDuet({ only: 'Assets' }) : toast('Duet data is not loaded', true)),
