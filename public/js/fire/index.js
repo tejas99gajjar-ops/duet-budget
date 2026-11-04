@@ -36,7 +36,7 @@ async function draw() {
   try { const fn = await loader(); await fn(fresh, { parts: rest, params: parts }); }
   catch (e) { console.error(e); html(fresh, h`<div class="fx"><div class="fx-note warn"><span>😕</span><div><b>This screen could not load.</b><div class="fx-sub">${e.message}</div></div></div>${fxNav(NAV_OF[name] || 'overview')}</div>`); }
   if (id !== drawId || !document.contains(old)) return;          // a newer navigation took over
-  const box = fresh.querySelector('.fx'); addIntro(box, name, rest[0]); linkTerms(fresh);
+  const box = fresh.querySelector('.fx'); addCrumbs(box, parts); addIntro(box, name, rest[0]); linkTerms(fresh);
   if (box && !sameScreen) box.classList.add('fx-enter');
   fresh.classList.remove('fx-stale'); old.replaceWith(fresh); current.root = fresh; lastKey = key; lastHtml = fresh.innerHTML;
   scrollTo(0, sameScreen ? y : 0);                                // a new screen opens at its top; a refresh of the same screen keeps your place
@@ -55,6 +55,34 @@ const INTROS = {
   settings: ['Plan settings', 'Rename the plan, back it up, import a backup, and choose how amounts are shown.'],
   prices: ['Keep values fresh', 'Type today\'s price for anything you track by units so its value stays up to date.'],
 };
+
+// ---- "You are here": a trail on every screen (Overview › Detail › Gap). Each step is a link, and the back arrow always goes one step up this same trail.
+const DETAIL_TABS = { target: 'Target', projection: 'Projection', gap: 'Gap', montecarlo: 'Stress test', scenarios: 'What-if worlds', calc: 'Calculation' };
+const INPUT_SECS = { profile: 'Profile', income: 'Income', spending: 'Spending', assets: 'Holdings', loans: 'Loans', insurance: 'Insurance', events: 'Life events', assumptions: 'Assumptions' };
+function trail(parts) {
+  const [a = '', b, c] = parts, O = ['Overview', '#/fire'];
+  switch (a) {
+    case '': return [['Overview']];
+    case 'detail': return [O, ['Detail', '#/fire/detail/target'], [DETAIL_TABS[b || 'target'] || 'Detail']];
+    case 'goals': return [O, ['Goals']];
+    case 'goal': { const g = X.getPlan()?.goals?.find((x) => String(x.id) === String(b)); return [O, ['Goals', '#/fire/goals'], [g?.name || 'Goal']]; }
+    case 'inputs': return b ? [O, ['Inputs', '#/fire/inputs'], [INPUT_SECS[b] || b]] : [O, ['Inputs']];
+    case 'prices': return [O, ['Inputs', '#/fire/inputs'], ['Prices']];
+    case 'live': return [O, ['Live']];
+    case 'checkin': return [O, ['Check-in']];
+    case 'settings': return [O, ['Settings']];
+    case 'learn': return [O, ['Guide']];
+    case 'how': return [O, ['Guide', '#/fire/learn'], ['How it works']];
+    default: return [O];
+  }
+}
+function addCrumbs(box, parts) {
+  if (!box || box.querySelector('.fx-crumbs')) return; const t = trail(parts); if (t.length < 2) return;
+  const esc = (x) => String(x).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const html = t.map(([label, href], i) => i === t.length - 1 ? `<span class="cur" aria-current="page">${esc(label)}</span>` : `<a href="${href}">${esc(label)}</a><i aria-hidden="true">›</i>`).join('');
+  box.insertAdjacentHTML('afterbegin', `<nav class="fx-crumbs" aria-label="You are here">${html}</nav>`);
+  const up = parts[0] === 'detail' ? '#/fire' : t[t.length - 2][1], back = box.querySelector('.fx-back'); if (back && up) back.setAttribute('href', up);
+}
 const introSeen = () => { try { return JSON.parse(localStorage.getItem('fire.intros') || '{}'); } catch { return {}; } };
 function addIntro(box, name, sub) {
   const key = name || ''; const info = INTROS[key]; if (!box || !info || (name === 'detail' && sub === 'calc')) return;

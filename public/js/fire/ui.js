@@ -79,7 +79,8 @@ export function openForm(cfg) {
       case 'toggle': control = h`<div class="fx-row fx-between"><span class="fx-sub" style="color:var(--text);font-size:15px">${f.hint || ''}</span>${toggle(!!v[f.name], 'tog', `data-f="${f.name}"`)}</div>`; break;
       case 'slider': control = h`<div class="fx-row"><input type="range" class="fx-slider" id="${id}" data-f="${f.name}" min="${f.min}" max="${f.max}" step="${f.step || 1}" value="${raw0[f.name] === '' ? f.min : raw0[f.name]}"><b style="min-width:5ch;text-align:right" data-live="${f.name}">${raw0[f.name] === '' ? f.min : raw0[f.name]}${f.suffix || ''}</b></div>`; break;
       case 'money': control = h`<div class="fx-pre"><b>₹</b><input id="${id}" data-f="${f.name}" inputmode="decimal" autocomplete="off" value="${raw0[f.name]}" placeholder="${f.placeholder || '0'}"></div>`; break;
-      case 'pct': control = h`<div class="fx-pre"><input id="${id}" data-f="${f.name}" inputmode="decimal" autocomplete="off" value="${raw0[f.name]}" placeholder="${f.placeholder || '0'}"><span class="suf">%</span></div>`; break;
+      case 'pct': { const sl = f.min != null && f.max != null && f.max - f.min <= 100 && f.slider !== false, cur = Number(raw0[f.name]);
+        control = h`<div class="fx-pre"><input id="${id}" data-f="${f.name}" inputmode="decimal" autocomplete="off" value="${raw0[f.name]}" placeholder="${f.placeholder || '0'}"><span class="suf">%</span></div>${sl ? h`<input type="range" class="fx-slider fx-sl-pct" data-sl="${f.name}" min="${f.min}" max="${f.max}" step="${f.step || (f.max - f.min <= 30 ? 0.5 : 1)}" value="${Number.isFinite(cur) && raw0[f.name] !== '' ? Math.min(f.max, Math.max(f.min, cur)) : f.min}" aria-label="${f.label || f.name} slider"><div class="fx-sl-ends"><span>${f.min}%</span><span>${f.max}%</span></div>` : ''}`; break; }
       case 'num': control = h`<div class="fx-pre"><input id="${id}" data-f="${f.name}" inputmode="decimal" autocomplete="off" value="${raw0[f.name]}" placeholder="${f.placeholder || ''}">${f.suffix ? h`<span class="suf">${f.suffix}</span>` : ''}</div>`; break;
       case 'month': control = h`<input class="fx-in" type="month" id="${id}" data-f="${f.name}" value="${v[f.name] || ''}">`; break;
       case 'date': control = h`<input class="fx-in" type="date" id="${id}" data-f="${f.name}" value="${v[f.name] || ''}">`; break;
@@ -128,7 +129,10 @@ export function openForm(cfg) {
   });
   const redraw = () => { const sh = s.el.querySelector('.sheet'), top = sh.scrollTop; sh.innerHTML = `<div class="grab"></div>${body().s}`; sh.scrollTop = top; };
   s.el.addEventListener('input', (e) => {
-    const t = e.target, name = t.dataset?.f; if (!name) return;
+    const t = e.target, sl = t.dataset?.sl;
+    if (sl) { raw0[sl] = t.value; const inp = s.el.querySelector(`input[data-f="${sl}"]`); if (inp) inp.value = t.value; if (preview) { const el = s.el.querySelector('#fx-prev'); if (el) try { el.innerHTML = preview({ ...coerce(), ...v }).s; } catch {} } return; }
+    const name = t.dataset?.f; if (!name) return;
+    if (name in raw0 && t.type !== 'range') { const r = s.el.querySelector(`input[data-sl="${name}"]`); const n = Number(t.value); if (r && t.value !== '' && Number.isFinite(n)) r.value = Math.min(Number(r.max), Math.max(Number(r.min), n)); }
     if (t.type === 'range') { raw0[name] = t.value; const l = s.el.querySelector(`[data-live="${name}"]`); const f = flat(fields).find((x) => x.name === name); if (l) l.textContent = t.value + (f?.suffix || ''); }
     else if (name in raw0) { raw0[name] = t.value; const f = s.el.querySelector(`[data-fmt="${name}"]`); if (f) { const n = parseINR(t.value); f.textContent = t.value && Number.isFinite(n) ? inrF(n) : ''; } }
     else v[name] = t.value;
