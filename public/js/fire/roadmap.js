@@ -1,10 +1,10 @@
-// Gap section: "When you start matters". For each start point, how much extra to invest every month (and what pay that implies) to close the gap.
+// Gap section: "What to invest, and when". For each start point and each scenario: the extra to invest every month (and the pay or spending cut that implies) to close the gap, and who carries it.
 import { h, raw } from './ui.js';
 import * as X from './ctx.js';
-import { roadmap } from './engine.js';
+import { roadmapScenarios, splitRow } from './engine.js';
 import { inr, inrC, pc } from './format.js';
 
-const tone = (r) => (r.extra == null ? 'bad' : r.raisePct <= 0.12 ? 'ok' : r.raisePct <= 0.3 ? 'warn' : 'bad');
+const tone = (r) => (r.extra == null ? 'bad' : r.raisePct == null ? 'bad' : r.raisePct <= 0.12 ? 'ok' : r.raisePct <= 0.3 ? 'warn' : 'bad');
 const COLOR = { ok: 'var(--fx-ok)', warn: 'var(--fx-warn)', bad: 'var(--fx-bad)' };
 const lab = (k) => (k === 0 ? 'Today' : k === 1 ? '1 yr' : `${k} yrs`);
 
@@ -17,38 +17,88 @@ function chart(rows, sel) {
   return raw(`<svg class="fx-chart" viewBox="0 0 ${w} ${hh}" role="img" aria-label="Extra monthly investment needed by start year">${bars}</svg>`);
 }
 
-function detail(R, k, C) {
-  const r = R.at(k), t = tone(r), gapNow = R.gap > 0;
-  if (!gapNow) return h`<div class="fx-note"><span>✅</span><div>No extra is needed: you are already on course.</div></div>`;
-  if (r.extra == null) return h`<div class="fx-note warn"><span>⚠️</span><div><b>Extra investing alone cannot close the gap if you start in ${r.year}.</b> Combine it with a later retirement age or lower retirement spending.</div></div>`;
-  const earn = r.raisePct, ratio = Math.min(1, r.shareOfIncome);
-  return h`<div class="fx-rm-d"><div class="fx-rm-h"><div class="fx-sub">Start in ${r.year} · age ${r.age}</div><div class="fx-mid" style="color:${COLOR[t]}">+${inr(r.extra)}<span class="fx-sub" style="font-size:14px"> a month</span></div><div class="fx-sub">${inr(r.real)} in today's money, then rising ${(R.st * 100).toFixed(1)}% a year with your pay</div></div>
-    <div class="fx-grid3"><div class="fx-tile"><div class="l">Invest in total</div><div class="v">${inrC(r.total)}</div><div class="s">${inrC(r.sipThen)} now + extra</div></div>
-      <div class="fx-tile"><div class="l">Of your pay</div><div class="v ${t}">${pc(r.shareOfIncome)}</div><div class="s">take-home ${inrC(r.income)}</div></div>
-      <div class="fx-tile"><div class="l">Or a raise of</div><div class="v ${t}">${inrC(r.extra)}</div><div class="s">+${pc(earn)} take-home</div></div></div>
-    <div class="fx-rm-bar"><i style="width:${ratio * 100}%;background:${COLOR[t]}"></i></div>
-    <div class="fx-sub">${t === 'ok' ? 'Comfortable: a small part of your pay.' : t === 'warn' ? 'A stretch: plan it alongside a raise or other cuts.' : 'Heavy: consider also retiring later or spending less.'}</div></div>`;
-}
+const verdict = (t) => (t === 'ok' ? 'Comfortable: a small part of pay.' : t === 'warn' ? 'A stretch: pair it with a raise or other cuts.' : 'Heavy: also consider retiring later or spending less.');
 
 export function roadmapCard(plan, res) {
-  if (res.gap.amount <= 0) return { html: '', mount() {} };
-  const R = roadmap(plan, { today: X.today() }); if (!R.rows.length) return { html: '', mount() {} };
-  const C = (v) => X.conv(v, res), w = R.rows.find((r) => r.k === 0) || R.rows[0], late = R.rows[R.rows.length - 1];
-  const costOfWaiting = w.extra != null && late.extra != null && late.k > 0 ? late.extra / w.extra : null;
-  let sel = 0;
-  const html = h`<div class="fx-card" id="roadmap"><div class="fx-ch"><h3>What to invest, and when</h3></div>
-    <div class="fx-sub" style="margin-bottom:8px">Extra you must invest each month, from the start you pick, to close the ${inr(C(res.gap.amount))} gap. Starting later costs more every month, because there is less time to grow.</div>
-    <div id="rm-chart">${chart(R.rows, sel)}</div>
+  const all = roadmapScenarios(plan, { today: X.today() }), activeId = plan.settings.activeScenarioId || 'base';
+  const cur = all.find((s) => s.scenario.id === activeId) || all.find((s) => s.scenario.id === 'base') || all[0];
+  if (!cur || cur.R.gap <= 0 || !cur.R.rows.length) return { html: '', mount() {} };
+  const C = (v) => X.conv(v, res), st = { sc: cur.scenario.id, k: 0, you: null };
+  const R = () => all.find((s) => s.scenario.id === st.sc).R, people = plan.profile.people, two = people.length > 1;
+  const chartRows = () => { const r = R(); return r.rows.some((x) => x.k === st.k) ? r.rows : [...r.rows, r.at(st.k)].sort((a, b) => a.k - b.k); };
+
+  const picker = () => h`<div class="fx-chips" role="group" aria-label="Scenario">${all.map(({ scenario, R: q }) => h`<button type="button" class="fx-opt ${scenario.id === st.sc ? 'on' : ''}" data-rmsc="${scenario.id}">${scenario.icon || ''} ${scenario.name}${scenario.id === activeId ? ' · yours' : ''}${q.gap <= 0 ? ' ✓' : ''}</button>`)}</div>`;
+
+  const who = (row) => {
+    if (!two) return '';
+    const dflt = splitRow(row), youDef = Math.round((dflt[0]?.share ?? 1) * 100), you = st.you ?? youDef;
+    const rows = splitRow(row, { [people[0].id]: you / 100, [people[1].id]: 1 - you / 100 }), byPay = splitRow(row);
+    const card = (p, i) => {
+      const t = p.extra == null ? 'bad' : p.pay > 0 ? tone({ extra: p.extra, raisePct: p.raisePct }) : p.extra > 0 ? 'bad' : 'ok';
+      return h`<div class="fx-tile"><div class="l"><b>${p.name}</b> · ${Math.round(p.share * 100)}%</div>
+        <div class="v ${t}">${p.extra == null ? 'n/a' : `+${inrC(p.extra)}`}<span class="fx-sub" style="font-size:12px"> /mo</span></div>
+        <div class="s">invests ${p.total == null ? '—' : inrC(p.total)} in total (${inrC(p.sip)} now)</div>
+        <div class="s">${p.pay > 0 ? `${p.shareOfPay == null ? '' : `${pc(p.shareOfPay)} of pay ${inrC(p.pay)} · raise of +${pc(p.raisePct)}`}` : p.extra > 0 ? 'no pay in this year: would need new income' : 'no pay in this year'}</div>
+        <div class="s">${row.spendCut == null ? '' : `spend cut share: ${inrC(byPay[i].spendCut)}/mo`}</div></div>`;
+    };
+    return h`<div class="fx-rm-who"><div class="fx-lbl" style="margin:14px 0 6px">WHO CARRIES IT</div>
+      <div class="fx-row fx-between"><b data-rmy>${people[0].name || 'You'} ${you}%</b><b data-rmp>${people[1].name || 'Partner'} ${100 - you}%</b></div>
+      <input type="range" class="fx-slider" id="rm-split" min="0" max="100" step="5" value="${you}" aria-label="Share carried by ${people[0].name || 'you'}">
+      <div class="fx-sl-ends"><span>${people[0].name || 'You'} 0%</span><span>${st.you == null ? `by pay (${youDef}%)` : raw('<button type="button" class="fx-link" data-rmreset style="font-size:12px">back to by pay</button>')}</span><span>100%</span></div>
+      <div class="fx-grid2" style="margin-top:8px">${rows.map(card)}</div></div>`;
+  };
+
+  const detail = () => {
+    const r = R(), row = r.at(st.k), t = tone(row);
+    if (!row.extra && row.extra !== 0) return h`<div class="fx-note warn"><span>⚠️</span><div><b>Extra investing alone cannot close the gap if you start in ${row.year}</b> in the ${r.scenario.name} scenario. Combine it with a later retirement age or lower retirement spending.</div></div>`;
+    return h`<div class="fx-rm-h"><div class="fx-sub">${r.scenario.name} scenario · start in ${row.year} · age ${row.age}</div><div class="fx-mid" style="color:${COLOR[t]}">+${inr(row.extra)}<span class="fx-sub" style="font-size:14px"> a month, household</span></div><div class="fx-sub">${inr(row.real)} in today's money, then rising ${(r.st * 100).toFixed(1)}% a year with pay</div></div>
+      <div class="fx-grid3"><div class="fx-tile"><div class="l">Invest in total</div><div class="v">${inrC(row.total)}</div><div class="s">${inrC(row.sipThen)} planned + extra</div></div>
+        <div class="fx-tile"><div class="l">Of household pay</div><div class="v ${t}">${row.shareOfIncome == null ? '—' : pc(row.shareOfIncome)}</div><div class="s">pay ${inrC(row.income)}</div></div>
+        <div class="fx-tile"><div class="l">Or a raise of</div><div class="v ${t}">${row.raisePct == null ? '—' : `+${pc(row.raisePct)}`}</div><div class="s">${inrC(row.extra)} a month</div></div></div>
+      <div class="fx-rm-bar"><i style="width:${Math.min(1, row.shareOfIncome ?? 1) * 100}%;background:${COLOR[t]}"></i></div><div class="fx-sub">${verdict(t)}</div>
+      ${who(row)}
+      ${row.spendCut != null ? h`<div class="fx-note" style="margin-top:12px"><span>✂️</span><div><b>Or spend ${inr(row.spendCut)} less a month in retirement</b> (today's money) instead of investing more. That alone closes the gap in this scenario.</div></div>` : h`<div class="fx-note warn" style="margin-top:12px"><span>✂️</span><div>Cutting retirement spending alone cannot close the gap in this scenario.</div></div>`}`;
+  };
+
+  const compare = () => {
+    const rows = all.map(({ scenario, R: q }) => { const row = q.at(Math.min(st.k, Math.max(0, q.maxYears))), ok = q.gap > 0 ? row.extra != null : true; return { scenario, q, row, ok }; });
+    const line = (s) => s.q.gap <= 0 ? 'on course, no extra needed' : s.row.extra == null ? 'extra investing alone is not enough' : `invest +${inrC(s.row.extra)}/mo${two ? ` (${splitRow(s.row).map((p) => `${p.name} ${inrC(p.extra)}`).join(' · ')})` : ''}`;
+    return h`<div class="fx-lbl" style="margin:14px 0 6px">THE SAME START IN EVERY SCENARIO</div><div class="fx-list">${rows.map((s) => h`<button type="button" class="fx-li" data-rmsc="${s.scenario.id}" style="text-align:left;align-items:flex-start;padding:10px 0;background:none;border:0;color:inherit;width:100%"><span class="fx-em">${s.scenario.icon || '•'}</span><span class="grow" style="min-width:0"><b>${s.scenario.name}${s.scenario.id === st.sc ? ' ✓' : ''}</b><div class="fx-sub">gap ${s.q.gap > 0 ? inrC(C(s.q.gap)) : 'none'} · ${line(s)}</div><div class="fx-sub">${s.q.gap > 0 && s.q.spendCut != null ? `or spend ${inrC(s.q.spendCut)}/mo less in retirement` : ''}</div></span></button>`)}</div>`;
+  };
+
+  const maxYears = () => R().maxYears;
+  const head = () => h`<div class="fx-sub" style="margin-bottom:8px">Extra you must invest each month, from the start you pick, to close the gap under each scenario. Starting later costs more every month, because there is less time to grow.</div>`;
+  const html = h`<div class="fx-card" id="roadmap"><div class="fx-ch"><h3>What to invest, and when</h3></div>${head()}
+    <div id="rm-pick">${picker()}</div>
+    <div id="rm-chart" style="margin-top:8px">${chart(chartRows(), st.k)}</div>
     <div class="fx-legend" style="margin:4px 0 10px"><span><i style="background:var(--fx-ok)"></i>Comfortable</span><span><i style="background:var(--fx-warn)"></i>A stretch</span><span><i style="background:var(--fx-bad)"></i>Heavy</span></div>
-    <div class="fx-lab-r" style="margin-top:6px"><div class="fx-row fx-between"><label for="rm-sl">If I start in</label><b id="rm-lv">Today</b></div><input id="rm-sl" type="range" class="fx-slider" min="0" max="${R.maxYears}" step="1" value="0" aria-label="Years until you start"><div class="fx-sl-ends"><span>Today</span><span>${R.maxYears} yrs</span></div></div>
-    <div id="rm-detail" style="margin-top:10px">${detail(R, 0, C)}</div>
-    ${costOfWaiting ? h`<div class="fx-note" style="margin-top:12px"><span>⏳</span><div>Waiting ${late.k} years makes the monthly amount <b>${costOfWaiting.toFixed(1)}×</b> larger (${inrC(w.extra)} today vs ${inrC(late.extra)} in ${late.year}).</div></div>` : ''}
-    <div class="fx-help" style="margin-top:8px">Amounts are rupees of the start year. "Of your pay" compares total investing with your take-home then (pay growing ${(R.st * 100).toFixed(1)}% a year). Bar heights use a square-root scale so the early, affordable starts stay visible. Moving a slider or tapping a bar changes nothing in your plan.</div></div>`;
+    <div class="fx-lab-r" style="margin-top:6px"><div class="fx-row fx-between"><label for="rm-sl">If I start in</label><b id="rm-lv">Today</b></div><input id="rm-sl" type="range" class="fx-slider" min="0" max="${maxYears()}" step="1" value="0" aria-label="Years until you start"><div class="fx-sl-ends"><span>Today</span><span id="rm-max">${maxYears()} yrs</span></div></div>
+    <div id="rm-detail" style="margin-top:10px">${detail()}</div><div id="rm-cmp">${compare()}</div>
+    <div class="fx-help" style="margin-top:8px">The extra amount is worked out by the planner itself: it is the exact monthly figure that makes the projected money equal the target, rising with pay. Pay and current SIPs are read from your inputs. The household total never changes with the split, only who carries it, and the spending split follows pay as a convention. Bar heights use a square-root scale. Nothing here changes your plan.</div></div>`;
+
   const mount = (root) => {
     const sl = root.querySelector('#rm-sl'); if (!sl) return;
-    const go = (k) => { sel = k; sl.value = k; root.querySelector('#rm-lv').textContent = lab(k) + (k ? ` · ${R.at(k).year}` : ''); root.querySelector('#rm-chart').innerHTML = chart(R.rows.some((r) => r.k === k) ? R.rows : [...R.rows, R.at(k)].sort((a, b) => a.k - b.k), k).s; root.querySelector('#rm-detail').innerHTML = detail(R, k, C).s; };
-    sl.addEventListener('input', () => go(Number(sl.value)));
-    root.querySelector('#rm-chart').addEventListener('click', (e) => { const g = e.target.closest('[data-rm]'); if (g) go(Number(g.dataset.rm)); });
+    const paint = (full) => {
+      const r = R(); if (st.k > r.maxYears) st.k = r.maxYears; sl.max = r.maxYears; sl.value = st.k; root.querySelector('#rm-max').textContent = `${r.maxYears} yrs`;
+      root.querySelector('#rm-lv').textContent = lab(st.k) + (st.k ? ` · ${r.at(st.k).year}` : '');
+      root.querySelector('#rm-chart').innerHTML = chart(chartRows(), st.k).s; root.querySelector('#rm-detail').innerHTML = detail().s; root.querySelector('#rm-cmp').innerHTML = compare().s;
+      if (full) root.querySelector('#rm-pick').innerHTML = picker().s;
+    };
+    sl.addEventListener('input', () => { st.k = Number(sl.value); paint(false); });
+    const card = root.querySelector('#roadmap');
+    card.addEventListener('input', (e) => {
+      if (e.target.id !== 'rm-split') return; st.you = Number(e.target.value);
+      // only the split block changes, so the slider keeps its focus while it is dragged
+      const row = R().at(st.k), box = card.querySelector('.fx-rm-who'); if (!box) return; const keep = e.target; const fresh = document.createElement('div'); fresh.innerHTML = who(row).s;
+      const nu = fresh.querySelector('.fx-grid2'), old = box.querySelector('.fx-grid2'); if (nu && old) old.replaceWith(nu);
+      box.querySelector('[data-rmy]').textContent = fresh.querySelector('[data-rmy]').textContent; box.querySelector('[data-rmp]').textContent = fresh.querySelector('[data-rmp]').textContent;
+      box.querySelector('.fx-sl-ends span:nth-child(2)').innerHTML = fresh.querySelector('.fx-sl-ends span:nth-child(2)').innerHTML; void keep;
+    });
+    card.addEventListener('click', (e) => {
+      const g = e.target.closest('[data-rm]'); if (g) { st.k = Number(g.dataset.rm); paint(false); return; }
+      const s = e.target.closest('[data-rmsc]'); if (s) { st.sc = s.dataset.rmsc; paint(true); return; }
+      if (e.target.closest('[data-rmreset]')) { st.you = null; paint(false); }
+    });
   };
   return { html, mount };
 }

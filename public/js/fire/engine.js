@@ -449,19 +449,64 @@ export function compareScenarios(plan, opts = {}) {
 /**
  * Roadmap: for each start point (today, 1, 3, 5, 10 years, ... up to the year before retirement) how much extra a month must be invested
  * from then on, rising with pay like the plan's own saving, to close the gap. Adding money is linear, so two runs per start point are exact.
- * Amounts are in rupees of the start year (nominal); `real` is the same in today's money.
+ * The closing amounts come straight from the engine. The per-person figures (pay, current SIPs) are read from the inputs with the same rules the engine uses.
+ * Amounts are rupees of the start year (nominal); `real` is the same in today's money. Honours the chosen scenario (default: the active one).
  */
 export function roadmap(plan, opts = {}) {
-  const base = runPlan(plan, opts), m = base.meta, A = plan.assumptions, gap = base.gap.amount, ov = opts.overrides || {};
-  const st = (A.salaryGrowth + (ov.incomeGrowthDeltaPct || 0)) / 100, infl = m.infl, yrs = Math.max(0, m.yearsToRet - 1);
-  const starts = [...new Set([0, 1, 3, 5, 10, 15, 20].filter((k) => k <= yrs).concat(yrs > 0 ? [yrs] : []))].sort((a, b) => a - b);
+  const base = runPlan(plan, opts), m = base.meta, gap = base.gap.amount;
+  const sc = scenarioOf(plan, opts.scenarioId ?? plan.settings.activeScenarioId), ov = { ...(sc?.overrides || {}), ...(opts.overrides || {}) };
+  const own = opts.overrides || {}, A = plan.assumptions, baseSalaryGrowth = A.salaryGrowth ?? 8;
+  const st = (baseSalaryGrowth + (ov.incomeGrowthDeltaPct || 0)) / 100, infl = m.infl, baseYear = m.baseYear, retireYear = m.retireYear, yrs = Math.max(0, m.yearsToRet - 1);
+  const people = plan.profile.people, primary = people[0], baseIdx = ymIdx({ y: baseYear, m: Number(m.today.slice(5, 7)) });
+  const ownerOf = (id) => people.find((p) => p.id === id) || primary;
+  const stopAt = {}, startAt = {};
+  for (const e of plan.events) { if (e.enabled === false || ov.eventsOff || (ov.eventsOffIds || []).includes(e.id) || !e.incomeId || !ym(e.date)) continue; if (e.kind === 'work_stop') stopAt[e.incomeId] = ym(e.date); if (e.kind === 'work_start') startAt[e.incomeId] = ym(e.date); }
+  const incomes = plan.incomes.filter((i) => i.include !== false).map((i) => ({ ...i }));
+  if (ov.partnerWorks && people[1]) incomes.push({ id: '__partner', person: people[1].id, takeHome: ov.partnerWorks.monthly, growthPct: ov.partnerWorks.growthPct ?? 6, startDate: `${ov.partnerWorks.startYear}-01`, untilYear: ov.partnerWorks.endYear ?? null, type: 'active' });
+  const active = (Y, start, end) => { let lo = Math.max(Y * 12, baseIdx), hi = Y * 12 + 11; if (start) lo = Math.max(lo, ymIdx(start)); if (end) hi = Math.min(hi, ymIdx(end)); return hi >= lo; };
+  /** Monthly pay (take-home, active work only) of one person in a given year. */
+  const payAt = (pid, Y) => sum(incomes.filter((inc) => ownerOf(inc.person).id === pid && inc.type !== 'passive' && !inc.continuesPostRetirement).map((inc) => {
+    const owner = ownerOf(inc.person); let until = inc.untilYear ?? null;
+    if (until == null) until = owner === primary ? retireYear : owner.workEndYear ?? birthYearOf(owner, baseYear) + (owner.retireAge ?? m.retireAge);
+    let end = { y: until - 1, m: 12 }; const stop = stopAt[inc.id]; if (stop) { const e2 = addM(stop, -1); if (ymIdx(e2) < ymIdx(end)) end = e2; }
+    const start = startAt[inc.id] || ym(inc.startDate); if (!active(Y, start, end)) return 0;
+    return (Number(inc.takeHome ?? inc.monthly) || 0) * Math.pow(1 + ((inc.growthPct ?? baseSalaryGrowth) + (ov.incomeGrowthDeltaPct || 0)) / 100, Y - baseYear);
+  }));
+  /** Monthly SIPs (all of them, including payroll ones) of one person's holdings in a given year, as the engine steps them up. */
+  const sipAt = (pid, Y) => sum(plan.holdings.filter((h) => h.include !== false && !(h.familyHeld && !A.includeFamilyFunds) && !(h.kind === 'property' && !A.includeHouse) && ownerOf(h.owner).id === pid).flatMap((h) => (h.sips || []).map((x) => {
+    if (x.status === 'paused' || x.status === 'stopped') return 0;
+    const owner = ownerOf(h.owner), start = ym(x.start), end = ym(x.end) || { y: retireYear - 1, m: 12 }; if (!active(Y, start, end)) return 0;
+    const stepPct = x.followsIncome ? (owner.growth ?? baseSalaryGrowth) + (ov.incomeGrowthDeltaPct || 0) : x.stepUpPct != null ? Number(x.stepUpPct) + (ov.incomeGrowthDeltaPct || 0) : 0;
+    const per = (x.frequency === 'quarterly' ? 1 / 3 : x.frequency === 'yearly' ? 1 / 12 : 1) * (Number(x.amount) || 0) * (ov.sipFactor ?? 1), s0 = Math.max(baseYear, start ? start.y : baseYear);
+    return per * Math.pow(1 + stepPct / 100, Math.max(0, Y - s0));
+  })));
+  // retirement spending: the monthly cut (today's money) that closes the gap, also linear
+  let spendCut = null;
+  if (gap > 0) { const t1 = runPlan(plan, { ...opts, overrides: { ...own, spendCutMonthly: (own.spendCutMonthly || 0) + 1000 } }), slope = (base.target.total - t1.target.total) / 1000; spendCut = slope > 0 && gap / slope <= base.target.monthlyToday ? gap / slope : null; }
   const at = (k) => {
-    const lo = runPlan(plan, { ...opts, overrides: { ...ov, extraMonthly: 1000, extraStartYears: k } }), slope = (lo.gap.projected - base.gap.projected) / 1000;
-    const todayTerms = gap > 0 && slope > 0 ? gap / slope : gap > 0 ? null : 0;       // monthly amount, in the first year's rupees, that would be stepped up each year
+    const lo = runPlan(plan, { ...opts, overrides: { ...own, extraMonthly: 1000, extraStartYears: k } }), slope = (lo.gap.projected - base.gap.projected) / 1000, Y = baseYear + k;
+    const todayTerms = gap > 0 && slope > 0 ? gap / slope : gap > 0 ? null : 0;       // monthly amount, in the first year's rupees, that is then stepped up each year
     const extra = todayTerms == null ? null : todayTerms * Math.pow(1 + st, k), real = extra == null ? null : extra / Math.pow(1 + infl, k);
-    const sip = m.sipNow * Math.pow(1 + st, k), income = m.takeHome * Math.pow(1 + st, k);
-    return { k, year: m.baseYear + k, age: m.ageNow + k, extra, real, sipThen: sip, total: extra == null ? null : sip + extra, income, shareOfIncome: extra == null || !income ? null : (sip + extra) / income, raisePct: extra == null || !income ? null : extra / income };
+    const persons = people.map((p) => ({ id: p.id, name: p.name || 'Person', pay: payAt(p.id, Y), sip: sipAt(p.id, Y) }));
+    const income = sum(persons.map((p) => p.pay)), sipThen = sum(persons.map((p) => p.sip));
+    return { k, year: Y, age: m.ageNow + k, extra, real, persons, sipThen, total: extra == null ? null : sipThen + extra, income, shareOfIncome: extra == null || !income ? null : (sipThen + extra) / income, raisePct: extra == null || !income ? null : extra / income, spendCut };
   };
-  const rows = starts.map(at);
-  return { gap, rows, at, maxYears: yrs, st, infl, retireYear: m.retireYear, retireAge: m.retireAge, takeHome: m.takeHome, sipNow: m.sipNow };
+  const starts = [...new Set([0, 1, 3, 5, 10, 15, 20].filter((k) => k <= yrs).concat(yrs > 0 ? [yrs] : []))].sort((a, b) => a - b);
+  return { gap, rows: starts.map(at), at, maxYears: yrs, st, infl, retireYear, retireAge: m.retireAge, takeHome: m.takeHome, sipNow: m.sipNow, scenario: sc, spendCut };
 }
+
+/**
+ * Splits a roadmap row between people. `shares` maps person id to a fraction (they must add to 1); by default each person's share of this year's pay.
+ * A person with no pay that year gets nothing unless the shares say otherwise. The household total never changes, only who carries it.
+ */
+export function splitRow(row, shares) {
+  const tot = row.persons.reduce((s, p) => s + p.pay, 0);
+  const sh = shares || Object.fromEntries(row.persons.map((p, i) => [p.id, tot > 0 ? p.pay / tot : i === 0 ? 1 : 0]));
+  return row.persons.map((p) => {
+    const f = sh[p.id] ?? 0, extra = row.extra == null ? null : row.extra * f;
+    return { ...p, share: f, extra, total: extra == null ? null : p.sip + extra, shareOfPay: extra == null || !p.pay ? null : (p.sip + extra) / p.pay, raisePct: extra == null || !p.pay ? null : extra / p.pay, spendCut: row.spendCut == null ? null : row.spendCut * f };
+  });
+}
+
+/** The same roadmap under every scenario (Optimistic, Base, Pessimistic and your own). */
+export const roadmapScenarios = (plan, opts = {}) => allScenarios(plan).map((s) => ({ scenario: s, R: roadmap(plan, { ...opts, scenarioId: s.id }) }));
