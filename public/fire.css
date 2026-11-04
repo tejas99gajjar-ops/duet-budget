@@ -223,3 +223,10 @@ select.fx-in{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .fx-tabs{position:sticky;top:0;z-index:6;background:var(--bg)}
 #labout .fx-tile .v{font-size:17px;white-space:nowrap;overflow-wrap:normal}
 .fx-intro .grow{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+
+/* collapsible sections on long screens */
+.fx-sec-h{cursor:pointer;position:relative;padding-right:30px}.fx-sec-h .fx-sec-c{position:absolute;right:0;top:0;font-size:20px;color:var(--dim);transition:transform .2s}
+.fx-sec.fx-closed>*:not(.fx-sec-h){display:none}.fx-sec.fx-closed .fx-sec-c{transform:rotate(-90deg)}.fx-sec.fx-closed .fx-sec-h>*:not(h3):not(.fx-sec-c){display:none}
+.fx-onpage{display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 16px}.fx-onpage::-webkit-scrollbar{display:none}
+.fx-onpage span{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);flex:none}
+.fx-onpage button{flex:none;padding:6px 12px;border-radius:14px;border:1px solid var(--fx-line);background:transparent;color:var(--muted);font-size:13px;font-weight:700}

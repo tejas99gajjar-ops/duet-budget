@@ -36,7 +36,7 @@ async function draw() {
   try { const fn = await loader(); await fn(fresh, { parts: rest, params: parts }); }
   catch (e) { console.error(e); html(fresh, h`<div class="fx"><div class="fx-note warn"><span>😕</span><div><b>This screen could not load.</b><div class="fx-sub">${e.message}</div></div></div>${fxNav(NAV_OF[name] || 'overview')}</div>`); }
   if (id !== drawId || !document.contains(old)) return;          // a newer navigation took over
-  const box = fresh.querySelector('.fx'); addCrumbs(box, parts); addIntro(box, name, rest[0]); linkTerms(fresh);
+  const box = fresh.querySelector('.fx'); addCrumbs(box, parts); addSections(box, parts); addIntro(box, name, rest[0]); linkTerms(fresh);
   if (box && !sameScreen) box.classList.add('fx-enter');
   fresh.classList.remove('fx-stale'); old.replaceWith(fresh); current.root = fresh; lastKey = key; lastHtml = fresh.innerHTML;
   scrollTo(0, sameScreen ? y : 0);                                // a new screen opens at its top; a refresh of the same screen keeps your place
@@ -83,6 +83,25 @@ function addCrumbs(box, parts) {
   box.insertAdjacentHTML('afterbegin', `<nav class="fx-crumbs" aria-label="You are here">${html}</nav>`);
   const up = parts[0] === 'detail' ? '#/fire' : t[t.length - 2][1], back = box.querySelector('.fx-back'); if (back && up) back.setAttribute('href', up);
 }
+
+// ---- Long screens: each titled card collapses under its heading (the first two stay open) and an "On this page" row jumps to any section, opening it.
+const openSecs = new Set();
+function addSections(box, parts) {
+  if (!box || !['detail', 'live', 'checkin'].includes(parts[0] || '') || parts[1] === 'calc') return;
+  const scope = parts.slice(0, 2).join('/'), cards = [...box.querySelectorAll(':scope > .fx-card, :scope > .col > .fx-card, :scope > .col > .col > .fx-card')];
+  const secs = []; for (const card of cards) {
+    const h3 = card.querySelector('h3'); if (!h3) continue; let head = h3; while (head.parentElement && head.parentElement !== card) head = head.parentElement;
+    if (head !== card.firstElementChild) continue; secs.push({ card, head, title: h3.textContent.split('·')[0].trim().replace(/\s+/g, ' ').replace(/^(.{24}).+$/, '$1…') });
+  }
+  if (secs.length < 4) return;
+  secs.forEach((x, i) => {
+    const id = scope + '|' + x.title; x.id = id; x.card.classList.add('fx-sec'); x.head.classList.add('fx-sec-h'); x.head.setAttribute('role', 'button'); x.head.setAttribute('tabindex', '0'); x.head.insertAdjacentHTML('beforeend', '<span class="fx-sec-c" aria-hidden="true">⌄</span>');
+    const closed = i >= 2 && !openSecs.has(id); x.card.classList.toggle('fx-closed', closed); x.head.setAttribute('aria-expanded', String(!closed)); x.card.dataset.sec = id;
+  });
+  const first = secs[0].card; const chips = secs.slice(1).map((x) => `<button type="button" data-secgo="${x.id.replace(/"/g, '&quot;')}">${x.title.replace(/[&<>]/g, '')}</button>`).join('');
+  first.insertAdjacentHTML('beforebegin', `<div class="fx-onpage" aria-label="On this page"><span>On this page</span>${chips}</div>`);
+}
+const toggleSec = (card, force) => { const open = force ?? card.classList.contains('fx-closed'); card.classList.toggle('fx-closed', !open); card.querySelector('.fx-sec-h')?.setAttribute('aria-expanded', String(open)); open ? openSecs.add(card.dataset.sec) : openSecs.delete(card.dataset.sec); };
 const introSeen = () => { try { return JSON.parse(localStorage.getItem('fire.intros') || '{}'); } catch { return {}; } };
 function addIntro(box, name, sub) {
   const key = name || ''; const info = INTROS[key]; if (!box || !info || (name === 'detail' && sub === 'calc')) return;
@@ -95,10 +114,13 @@ function wireDoc() {
   if (docWired) return; docWired = true;
   document.addEventListener('click', (e) => {
     const t = e.target.closest?.('[data-term]'); if (t && document.querySelector('.fx')) { e.preventDefault(); t.closest('.overlay')?.remove(); openTerm(t.dataset.term); return; }
+    const go = e.target.closest?.('[data-secgo]'); if (go) { const c = [...document.querySelectorAll('.fx-sec')].find((k) => k.dataset.sec === go.dataset.secgo); if (c) { toggleSec(c, true); c.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
+    const sh0 = e.target.closest?.('.fx-sec-h'); if (sh0 && !e.target.closest('a,button:not(.fx-sec-h),input,select')) { toggleSec(sh0.closest('.fx-sec')); return; }
     const x = e.target.closest?.('[data-intro-x]'); if (x) { const s = introSeen(); s[x.dataset.introX] = 1; try { localStorage.setItem('fire.intros', JSON.stringify(s)); } catch {} x.closest('.fx-intro')?.remove(); return; }
     const sh = e.target.closest?.('[data-intro-show]'); if (sh) { const s = introSeen(); delete s[sh.dataset.introShow]; try { localStorage.setItem('fire.intros', JSON.stringify(s)); } catch {} X.redraw(); }
   });
-  document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target?.dataset?.term) { e.preventDefault(); openTerm(e.target.dataset.term); } });
+  document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target?.classList?.contains('fx-sec-h')) { e.preventDefault(); toggleSec(e.target.closest('.fx-sec')); return; }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target?.dataset?.term) { e.preventDefault(); openTerm(e.target.dataset.term); } });
   new MutationObserver((list) => { if (!document.querySelector('.fx')) return; for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1 && n.classList?.contains('overlay')) setTimeout(() => linkTerms(n), 30); }).observe(document.body, { childList: true });
 }
 
