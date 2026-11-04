@@ -8,6 +8,7 @@ import { inr, inrC, inrF, pc, pp, yrs } from './format.js';
 import { projectionBars, stackedBars, lineChart, tornado } from './charts.js';
 import { pickRetireAge, toggleBasis } from './actions.js';
 import { openWhatIf } from './whatif.js';
+import { roadmapCard } from './roadmap.js';
 import { sensitivity, runPlan, loanProjection } from './engine.js';
 
 const TABS = [['target', 'Target'], ['projection', 'Projection'], ['gap', 'Gap'], ['montecarlo', 'Monte Carlo'], ['scenarios', 'Scenarios']];
@@ -119,10 +120,12 @@ function gapTab(plan, res) {
   const lever = (k, icon, title, sub, big, bigSub, min, max, step, value, curLab, tgtLab, maxLab, color) => h`<div class="fx-card"><div class="fx-row fx-between" style="align-items:flex-start"><div><b style="font-size:17px">${icon} ${title}</b><div class="fx-sub" style="margin-top:2px">${sub}</div></div><div class="fx-right"><div class="fx-mid" style="color:${color}" data-big="${k}">${big}</div><div class="fx-sub">${bigSub}</div></div></div>
     <input type="range" class="fx-slider" data-act="lv" data-lv="${k}" min="${min}" max="${max}" step="${step}" value="${value}" style="accent-color:${color};margin-top:12px" aria-label="${title}"><div class="fx-row fx-between fx-sub" style="gap:6px"><span>${curLab}</span><b style="color:${color}" data-tgt="${k}">${tgtLab}</b><span>${maxLab}</span></div>
     <div class="fx-row fx-between" style="margin-top:10px;gap:10px"><span class="fx-sub" data-after="${k}"></span><button class="fx-btn small" data-act="apply" data-k="${k}">Apply</button></div></div>`;
+  const rm = roadmapCard(plan, res);
   const body = h`
     <div class="fx-card ${short ? 'bad' : 'good'}"><div class="${short ? 'bad' : 'ok'}" style="font-weight:800;letter-spacing:.06em;text-transform:uppercase;font-size:13px">${short ? '⚠ Shortfall' : '✓ Surplus'} at age ${m.retireAge}</div><div class="fx-big ${short ? 'bad' : 'ok'}" style="margin:6px 0 8px">${inr(C(Math.abs(g.amount)))}</div>
       <div class="fx-sub" style="color:var(--text);font-size:15px;line-height:1.45">${short ? `Your pots will reach ${inr(C(g.projected))} by ${m.retireYear} but you need ${inr(C(g.target))}. Four levers can close this gap.` : `Your pots will reach ${inr(C(g.projected))} by ${m.retireYear}, ${inr(C(-g.amount))} more than the ${inr(C(g.target))} you need.`}</div>
       <button class="fx-link" data-act="calc" style="margin-top:10px">Show detailed calculation →</button></div>
+    ${rm.html}
     ${short ? h`${lever('save', '💰', 'Save more', 'Increase monthly investments', `+${inrC(extra)}`, '/month needed', 0, maxExtra, 1000, extra, `${inrC(cur)} current`, `${inrC(cur + extra)} target`, `${inrC(cur + maxExtra)} max`, 'var(--fx-ok)')}
       ${earnD != null ? lever('earn', '📈', 'Earn more', 'Higher income and saving growth', `+${earnD}%`, 'income growth/yr', 0, 15, 0.5, earnD, `${base}% base`, `${base + earnD}% needed`, `${base + 15}% max`, 'var(--fx2)') : h`<div class="fx-card ghost"><b>📈 Earn more</b><div class="fx-sub">Even 15% extra yearly growth does not close this gap on its own.</div></div>`}
       ${cl.lowerSpendPossible ? lever('spend', '✂️', 'Spend less', 'Reduce retirement spending', `− ${inrC(cut)}`, '/month at retirement', 0, Math.round(monthly * 0.5 / 500) * 500, 500, cut, `${inrC(monthly)} current`, `${inrC(monthly - cut)} new target`, `${inrC(monthly * 0.5)} min`, 'var(--fx-warn)') : h`<div class="fx-card ghost"><b>✂️ Spend less</b><div class="fx-sub">Cutting spending alone cannot close this gap.</div></div>`}
@@ -141,7 +144,7 @@ function gapTab(plan, res) {
   }, inputs: { lv: (el) => { const k = el.dataset.lv, v = Number(el.value), r = X.run({ overrides: opts(k, v) }), root = el.closest('.fx-card'); const t = root.querySelector(`[data-tgt="${k}"]`), a = root.querySelector(`[data-after="${k}"]`), b = root.querySelector(`[data-big="${k}"]`);
     if (k === 'save') { t.textContent = `${inrC(cur + v)} target`; b.textContent = `+${inrC(v)}`; } else if (k === 'earn') { t.textContent = `${(base + v).toFixed(1)}% needed`; b.textContent = `+${v}%`; } else { t.textContent = `${inrC(monthly - v)} new target`; b.textContent = `− ${inrC(v)}`; }
     a.innerHTML = r.gap.amount > 0 ? `Gap after this: <b class="bad">${inr(C(r.gap.amount))}</b>` : `Gap closed, <b class="ok">${inr(C(-r.gap.amount))}</b> to spare`; } } };
-  after.mount = (root) => { for (const el of root.querySelectorAll('[data-lv]')) after.inputs.lv(el); };
+  after.mount = (root) => { for (const el of root.querySelectorAll('[data-lv]')) after.inputs.lv(el); rm.mount(root); };
   return { body, after };
 }
 

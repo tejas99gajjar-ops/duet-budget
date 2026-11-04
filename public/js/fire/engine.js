@@ -227,7 +227,7 @@ export function buildModel(planIn, opts = {}) {
   if (sum(freedReal)) virtual('__freed', 'EMI freed, invested', freedReal, 'equity', retGoal.id);
   if (ov.extraMonthly) {
     const c = zero(), st = (ov.extraStepUpPct ?? baseSalaryGrowth + (ov.incomeGrowthDeltaPct || 0)) / 100;
-    for (let i = 0; i < nYears; i++) { const y = baseYear + i; if (y > lastPre) break; c[i] = (ov.extraMonthly * Math.pow(1 + st, y - baseYear) * 12 * frac(y)) / Math.pow(1 + infl, tmid(y)); }
+    for (let i = 0; i < nYears; i++) { const y = baseYear + i; if (y > lastPre) break; if (i < (ov.extraStartYears || 0)) continue; c[i] = (ov.extraMonthly * Math.pow(1 + st, y - baseYear) * 12 * frac(y)) / Math.pow(1 + infl, tmid(y)); }
     virtual('__extra', 'Extra monthly saving', c, 'equity', retGoal.id);
     holdings[holdings.length - 1].contribTake = zero();   // an extra amount you choose to save is assumed funded by extra income or spending cuts, so it never shows up as a cash-flow shortfall
   }
@@ -444,4 +444,24 @@ export function compareScenarios(plan, opts = {}) {
     const at = runPlan(plan, { ...o, retireAge: age ?? runPlan(plan, o).meta.retireAge });
     return { scenario: sc, earliestAge: age, grid, atAge: at.meta.retireAge, corpus: at.gap.projected, target: at.gap.target, gap: at.gap.amount, retireMonthly: at.target.monthlyToday, incomeGrowth: (plan.assumptions.salaryGrowth ?? 8) + (sc.overrides?.incomeGrowthDeltaPct || 0), equityReturn: (plan.assumptions.returns?.equity ?? 12) + (sc.overrides?.equityReturnDeltaPct || 0) };
   });
+}
+
+/**
+ * Roadmap: for each start point (today, 1, 3, 5, 10 years, ... up to the year before retirement) how much extra a month must be invested
+ * from then on, rising with pay like the plan's own saving, to close the gap. Adding money is linear, so two runs per start point are exact.
+ * Amounts are in rupees of the start year (nominal); `real` is the same in today's money.
+ */
+export function roadmap(plan, opts = {}) {
+  const base = runPlan(plan, opts), m = base.meta, A = plan.assumptions, gap = base.gap.amount, ov = opts.overrides || {};
+  const st = (A.salaryGrowth + (ov.incomeGrowthDeltaPct || 0)) / 100, infl = m.infl, yrs = Math.max(0, m.yearsToRet - 1);
+  const starts = [...new Set([0, 1, 3, 5, 10, 15, 20].filter((k) => k <= yrs).concat(yrs > 0 ? [yrs] : []))].sort((a, b) => a - b);
+  const at = (k) => {
+    const lo = runPlan(plan, { ...opts, overrides: { ...ov, extraMonthly: 1000, extraStartYears: k } }), slope = (lo.gap.projected - base.gap.projected) / 1000;
+    const todayTerms = gap > 0 && slope > 0 ? gap / slope : gap > 0 ? null : 0;       // monthly amount, in the first year's rupees, that would be stepped up each year
+    const extra = todayTerms == null ? null : todayTerms * Math.pow(1 + st, k), real = extra == null ? null : extra / Math.pow(1 + infl, k);
+    const sip = m.sipNow * Math.pow(1 + st, k), income = m.takeHome * Math.pow(1 + st, k);
+    return { k, year: m.baseYear + k, age: m.ageNow + k, extra, real, sipThen: sip, total: extra == null ? null : sip + extra, income, shareOfIncome: extra == null || !income ? null : (sip + extra) / income, raisePct: extra == null || !income ? null : extra / income };
+  };
+  const rows = starts.map(at);
+  return { gap, rows, at, maxYears: yrs, st, infl, retireYear: m.retireYear, retireAge: m.retireAge, takeHome: m.takeHome, sipNow: m.sipNow };
 }

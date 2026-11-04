@@ -13,10 +13,11 @@ export const getPlan = () => FS.fs.plan;
 export const hashOf = (obj) => { const s = JSON.stringify(obj); let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h >>> 0); };
 
 const cache = new Map();
-const memo = (fn) => (...args) => { const key = JSON.stringify(args); if (cache.has(key)) return cache.get(key); const v = fn(...args); cache.set(key, v); if (cache.size > 80) cache.delete(cache.keys().next().value); return v; };
-export const run = (opts = {}, p = getPlan()) => memo((pj, o, t) => runPlan(JSON.parse(pj), { today: t, ...o }))(JSON.stringify(p), opts, today());
-export const grid = (opts = {}, from, to, p = getPlan()) => memo((pj, o, t, a, b) => ageGrid(JSON.parse(pj), { today: t, ...o }, a, b))(JSON.stringify(p), opts, today(), from, to);
-export const close = (opts = {}, p = getPlan()) => memo((pj, o, t) => closeGap(JSON.parse(pj), { today: t, ...o }))(JSON.stringify(p), opts, today());
+const memo = (name, fn) => (...args) => { const key = name + JSON.stringify(args);   // the name keeps run, grid and close from sharing an entry when their inputs match
+   if (cache.has(key)) return cache.get(key); const v = fn(...args); cache.set(key, v); if (cache.size > 80) cache.delete(cache.keys().next().value); return v; };
+export const run = (opts = {}, p = getPlan()) => memo('run', (pj, o, t) => runPlan(JSON.parse(pj), { today: t, ...o }))(JSON.stringify(p), opts, today());
+export const grid = (opts = {}, from, to, p = getPlan()) => memo('grid', (pj, o, t, a, b) => ageGrid(JSON.parse(pj), { today: t, ...o }, a, b))(JSON.stringify(p), opts, today(), from, to);
+export const close = (opts = {}, p = getPlan()) => memo('close', (pj, o, t) => closeGap(JSON.parse(pj), { today: t, ...o }))(JSON.stringify(p), opts, today());
 export { earliestAge };
 
 /** The plan fields that change a result (settings like the theme or the last MC run do not). */
