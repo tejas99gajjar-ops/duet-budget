@@ -4,20 +4,20 @@ import { pref, h, html, raw, get, api, qs, bind, state, APP_VERSION, space, me, 
   avatar, byChip, I, iconBtn, toast, errToast, confirmSheet, sheet, txIcon, currencySymbol } from './core.js';
 
 // ---------- shared row renderers ----------
-export function txRow(t) {
+export function txRow(t, href) {
   const amt = t.type === 'income' ? h`<span class="amt pos">${money(t.amount_cents, { sign: true })}</span>`
     : t.type === 'expense' ? h`<span class="amt neg">-${money(t.amount_cents)}</span>` : h`<span class="amt" style="color:var(--blue)">${money(t.amount_cents)}</span>`;
   const title = t.note || t.category?.name || (t.type === 'transfer' ? 'Transfer' : 'Transaction');
   const where = t.type === 'transfer' ? `${t.wallet_name} → ${t.to_wallet_name}` : t.wallet_name;
-  return h`<a class="tx" href="#/tx/${t.id}"><span class="ico">${txIcon(t)}</span><span class="grow"><div class="t ellipsis">${title}</div>
+  return h`<a class="tx" href="${href ? href(t) : `#/tx/${t.id}`}"><span class="ico">${txIcon(t)}</span><span class="grow"><div class="t ellipsis">${title}</div>
     <div class="s">${byChip(t.created_by)}${where}${t.recurring_id ? ' · 🔁' : ''}${t.status === 'pending' ? ' · pending' : ''}</div>
     ${t.tags.length ? h`<div style="margin-top:4px">${t.tags.map((g) => h`<span class="tag">#${g}</span>`)}</div>` : ''}</span>${amt}</a>`;
 }
-export function groupedRows(items) {
+export function groupedRows(items, href) {
   const days = new Map(); for (const t of items) (days.get(t.date) || days.set(t.date, []).get(t.date)).push(t);
   return [...days].map(([d, rows]) => {
     const spent = rows.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount_cents, 0);
-    return h`<div class="day"><span>${dayLabel(d)}</span>${spent ? h`<b>${money(spent)}</b>` : ''}</div>${rows.map(txRow)}`;
+    return h`<div class="day"><span>${dayLabel(d)}</span>${spent ? h`<b>${money(spent)}</b>` : ''}</div>${rows.map((t) => txRow(t, href))}`;
   });
 }
 export const header = (extra = '') => {
@@ -32,10 +32,11 @@ export const header = (extra = '') => {
 // ---------- dashboard ----------
 const tipsList = (list) => h`<div class="col" style="gap:10px;margin-top:10px">${list.map((t) => h`<div class="row" style="gap:10px;align-items:flex-start"><span style="font-size:18px">${t.icon}</span><div style="font-size:14px">${t.text}</div></div>`)}</div>`;
 const tipPart = (p) => (Array.isArray(p) ? h`<b class="${{ b: '', ok: 'pos', pos: 'pos', neg: 'neg' }[p[0].trim()] ?? ''}">${p[1]}</b>` : p);
+const tipsOpen = () => { try { return localStorage.getItem('duet.tips') === 'open'; } catch { return false; } };
 export async function dashboard(root) {
   const s = await get('/summary');
   const b = s.budgets, top = [...b.items].sort((a, c) => c.pct - a.pct).slice(0, 2);
-  const pace = (i, name, icon) => h`<div><div class="row between" style="margin-bottom:5px"><span class="row gap6"><span>${icon}</span><b style="font-size:13px">${name}</b></span>
+  const pace = (i, name, icon) => h`<div ${i.id ? raw(`data-act="bud" data-id="${i.id}" role="link" tabindex="0" style="cursor:pointer"`) : raw('')}><div class="row between" style="margin-bottom:5px"><span class="row gap6"><span>${icon}</span><b style="font-size:13px">${name}</b></span>
       <span class="muted small">${money(i.spent_cents)} / ${money(i.limit_cents)}</span></div>
     ${bar(i.pct)}
     <div class="row between small" style="margin-top:4px"><span class="muted">${pct(i.pct)} spent (${money(Math.max(0, i.remaining_cents))} left)</span>
@@ -53,15 +54,18 @@ export async function dashboard(root) {
     <div class="card"><div class="row between" style="margin-bottom:14px"><h2>Active Budget Pacing</h2><a class="link" href="#/budgets">View Details →</a></div>
       ${b.overall ? h`<div class="col" style="gap:14px">${pace(b.overall, 'Overall Monthly Budget', '🕒')}${top.map((i) => pace(i, i.category?.name, i.category?.icon))}</div>`
         : h`<div class="empty" style="padding:8px"><span class="e">🎯</span>No budgets yet.<br><a class="link" href="#/budgets">Create your first budget</a></div>`}</div>
-    ${true ? h`<div class="card"><div class="row between"><div class="eyebrow" style="color:var(--amber)">Smart tips</div><button class="link" data-act="why" style="font-size:11px">How are these made?</button></div>
+    ${true ? h`<div class="card tipscard ${tipsOpen() ? '' : 'closed'}" id="tipscard"><button type="button" class="tipshead" data-act="tips" aria-expanded="${tipsOpen()}"><span class="eyebrow" style="color:var(--amber)">Smart tips${s.insights.length + tipLines.length ? ` · ${tipLines.length + s.insights.length}` : ''}</span><span class="tipsum">${tipLines[0] ? tipLines[0].parts.map((p) => (Array.isArray(p) ? p[1] : p)).join('') : 'Log a few days to see forecasts'}</span><span class="tipchev" aria-hidden="true">⌄</span></button><div class="tipsbody"><div class="row" style="justify-content:flex-end"><button class="link" data-act="why" style="font-size:11px">How are these made?</button></div>
       ${tipLines.length ? h`<div class="col" style="gap:8px;margin-top:10px">${tipLines.map((l) => h`<a class="tipline" href="#/pace"><span class="ic">${l.icon}</span><span class="grow">${l.parts.map(tipPart)}${l.detail?.length ? h`<span class="tipdetail">${l.detail.join(' ')}</span>` : ''}</span>${I.chev}</a>`)}${coming ? h`<a class="tipshape warn" href="#/pace"><span>📅</span><span class="grow"><b>Coming up.</b> ${coming}</span></a>` : ''}${shape ? h`<a class="tipshape ${shape.tone}" href="#/pace"><span>${shape.icon}</span><span class="grow"><b>${shape.title}.</b> ${shape.first}</span></a>` : ''}</div>` : ''}
       ${!tipLines.length ? h`<div class="tipline" style="margin-top:10px"><span class="ic">🗓️</span><span class="grow">Log a few days of expenses and income to see your daily spend and savings forecast here.</span></div>` : ''}
-      ${s.insights.length ? (tipLines.length ? h`<details class="moretips"><summary>More tips (${s.insights.length})</summary>${tipsList(s.insights)}</details>` : tipsList(s.insights)) : ''}</div>` : ''}
+      ${s.insights.length ? (tipLines.length ? h`<details class="moretips"><summary>More tips (${s.insights.length})</summary>${tipsList(s.insights)}</details>` : tipsList(s.insights)) : ''}</div></div>` : ''}
     <div class="card"><div class="row between" style="margin-bottom:8px"><h2 style="font-size:18px">Recent Transactions</h2><a class="link" href="#/transactions">See all →</a></div>
       <form class="row" data-act="search" style="margin-bottom:6px"><input class="input" name="q" placeholder="Search transactions" style="padding:10px 14px;font-size:14px" aria-label="Search"><button class="iconbtn" aria-label="Search">${I.search}</button></form>
       ${s.recent.length ? groupedRows(s.recent) : h`<div class="empty"><span class="e">🧾</span>No transactions yet.<br>Tap <b>+</b> to add your first one.</div>`}</div>`);
+  root.addEventListener('keydown', (e) => { const el = e.target.closest?.('[data-act=bud]'); if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); location.hash = `#/budget/${el.dataset.id}`; } });
   bind(root, { submit: { search: (el) => { location.hash = '#/transactions' + qs({ q: new FormData(el).get('q') }); } },
-    click: { why: () => { const sh = sheet(h`<h1 style="font-size:20px">How smart tips work</h1><p class="muted">They are plain arithmetic on your own transactions and budgets (spend pace, budget %, month-over-month change, share of income kept). <b>No AI model, LLM or machine learning is used</b>, and nothing leaves your server.</p><p class="muted" style="font-size:11px">App version ${APP_VERSION}</p><button class="btn" data-act="close">Got it</button>`); } } });
+    click: { bud: (el) => { location.hash = `#/budget/${el.dataset.id}`; },
+      tips: (el) => { const card = el.closest('#tipscard'), open = card.classList.contains('closed'); card.classList.toggle('closed', !open); el.setAttribute('aria-expanded', String(open)); try { localStorage.setItem('duet.tips', open ? 'open' : 'closed'); } catch {} },
+      why: () => { const sh = sheet(h`<h1 style="font-size:20px">How smart tips work</h1><p class="muted">They are plain arithmetic on your own transactions and budgets (spend pace, budget %, month-over-month change, share of income kept). <b>No AI model, LLM or machine learning is used</b>, and nothing leaves your server.</p><p class="muted" style="font-size:11px">App version ${APP_VERSION}</p><button class="btn" data-act="close">Got it</button>`); } } });
 }
 
 // ---------- full list with filters ----------

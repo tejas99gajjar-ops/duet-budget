@@ -190,3 +190,8 @@ html{overscroll-behavior-y:none}
 .recrow{width:100%;text-align:left;background:none;border:0;color:inherit;display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.recrow:first-child{border-top:0}.recrow svg{width:16px;height:16px;stroke:var(--dim);fill:none;stroke-width:2;flex:none}
 .note-card{background:color-mix(in srgb,var(--accent) 9%,var(--card));border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:16px;padding:12px 14px;font-size:13px;line-height:1.5}.note-card.warn{background:color-mix(in srgb,var(--amber) 11%,var(--card));border-color:color-mix(in srgb,var(--amber) 40%,transparent)}
 .tipdetail{display:block;margin-top:6px;font-size:12px;line-height:1.5;color:var(--muted);font-weight:400}
+/* collapsible smart tips */
+.tipshead{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;color:inherit;padding:0;font:inherit;min-width:0}
+.tipshead .eyebrow{flex:none}.tipsum{flex:1;min-width:0;font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tipchev{flex:none;font-size:20px;color:var(--dim);transition:transform .2s}.tipscard.closed .tipchev{transform:rotate(-90deg)}
+.tipscard:not(.closed) .tipsum{display:none}.tipscard.closed .tipsbody{display:none}.tipsbody{margin-top:8px}

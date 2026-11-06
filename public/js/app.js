@@ -14,7 +14,7 @@ let current = null, refreshTimer = null;
 const routes = [
   ['welcome', auth.welcome, { public: true }], ['login', auth.login, { public: true }], ['signup', auth.signup, { public: true }], ['setup', auth.setup, { setup: true }],
   ['dashboard', tx.dashboard, { tab: 'dashboard', live: true }], ['wallets', money.wallets, { tab: 'wallets', live: true }],
-  ['wallet/:id', money.walletDetail, { tab: 'wallets', live: true }], ['budgets', money.budgets, { tab: 'budgets', live: true }],
+  ['wallet/:id', money.walletDetail, { tab: 'wallets', live: true }], ['budgets', money.budgets, { tab: 'budgets', live: true }], ['budget/:id', money.budgetDetail, { tab: 'budgets', live: true }],
   ['analytics', an.analytics, { tab: 'analytics', live: true }], ['portfolio', money.portfolio, { live: true, noNav: true }],
   ['transactions', tx.list, { live: true, noNav: true }], ['tx/new', tx.form, { noNav: true }], ['tx/:id/edit', tx.form, { noNav: true }],
   ['tx/:id', tx.detail, { live: true, noNav: true }], ['settings', settings.main, { live: true, tab: '' }], ['profile', settings.profile, { noNav: true }],

@@ -55,6 +55,26 @@ export async function walletDetail(root, { id }) {
 }
 
 // ---------- budgets ----------
+/** One budget: where it stands for its period, and every transaction counted in it. Tap a transaction to edit it. */
+export async function budgetDetail(root, { id, mode: m0 }) {
+  const mode = m0 === 'all' ? 'all' : 'period';
+  const [b] = await Promise.all([get('/budgets' + qs({ mode })), cats().length ? 0 : reload()]);
+  const i = b.items.find((x) => x.id === Number(id)); if (!i) { location.hash = '#/budgets'; return; }
+  const win = i.window, stCls = i.status === 'over' ? 'neg' : i.status === 'warning' ? 'warn' : 'pos';
+  const r = await get('/transactions' + qs({ category: i.category_id, type: 'expense', from: win.start, to: win.end, limit: 200 }));
+  const dm = (d) => { const p = d.split('-'); return `${Number(p[2])} ${monthName(d)}`; };
+  const label = mode === 'all' ? `Since ${dm(i.start_date)}` : i.period === 'monthly' ? monthName(win.start, true) + ' ' + win.start.slice(0, 4) : i.period === 'daily' ? 'Today' : `${dm(win.start)} – ${dm(win.end)}`;
+  const other = mode === 'all' ? 'period' : 'all', otherLabel = mode === 'all' ? `This ${i.period === 'monthly' ? 'month' : i.period === 'weekly' ? 'week' : 'day'}` : 'All time';
+  html(root, h`<div class="page-head"><a class="iconbtn" href="#/budgets" aria-label="Back">${I.back}</a><h1 style="font-size:20px">${i.category?.icon} ${i.category?.name}</h1>${iconBtn('edit', I.edit, 'Edit budget')}</div>
+    <div class="card"><div class="row between"><div><div class="eyebrow">${label} · ${i.period}${i.rollover ? ' · rollover' : ''}</div><div class="big" style="font-size:30px;margin:4px 0">${money(i.spent_cents)}</div><div class="muted small">of ${money(i.limit_cents)} budget</div></div>${ring(i.pct, i.status)}</div>
+      <div style="margin-top:12px">${bar(i.pct)}</div>
+      <div class="row between small" style="margin-top:6px"><span class="${stCls}">${i.status === 'over' ? `⚠ Over by ${money(-i.remaining_cents)}` : `${money(i.remaining_cents)} left`}</span><span class="muted">${i.days_left ? `${i.days_left} days left` : ''}</span></div>
+      <div class="row" style="margin-top:12px;gap:10px"><button class="btn small ghost" style="flex:1" data-act="edit">Edit budget</button><a class="btn small ghost" style="flex:1;text-align:center" href="#/budget/${i.id}${other === 'all' ? '?mode=all' : ''}">${otherLabel}</a></div></div>
+    <div class="card"><div class="row between" style="margin-bottom:8px"><h2 style="font-size:18px">Transactions</h2><span class="muted small">${r.items.length} · ${money(r.items.reduce((s, t) => s + t.amount_cents, 0))}</span></div>
+      ${r.items.length ? groupedRows(r.items, (t) => `#/tx/${t.id}/edit`) : h`<div class="empty"><span class="e">🧾</span>No ${i.category?.name} expenses in this period yet.</div>`}
+      ${r.items.length ? h`<div class="muted small" style="margin-top:8px">Tap a transaction to edit it.</div>` : ''}</div>`);
+  bind(root, { click: { edit: () => budgetSheet(i), } });
+}
 export async function budgets(root) {
   let mode = 'period', data = null;
   const draw = async () => {
@@ -67,13 +87,13 @@ export async function budgets(root) {
           ${o.proj_cents != null ? h`<div class="small ${o.pace_status === 'over' ? 'neg' : o.pace_status === 'watch' ? 'warn' : 'muted'}" style="margin-top:6px">On course for ${money(o.proj_cents, { decimals: false })}${o.due_cents > 0 ? `, counting ${money(o.due_cents, { decimals: false })} still due` : ''}${o.everyday_safe_cents != null ? ` · keep everyday to ${money(o.everyday_safe_cents, { decimals: false })}/day` : ''}</div>` : ''}</div></div>`
         : h`<div class="card empty"><span class="e">🎯</span>Set a limit for a category to see your monthly pacing here.</div>`}
       <div class="card"><div class="row between" style="margin-bottom:14px"><h2 style="font-size:18px">Category Budgets</h2><button class="btn small ghost" data-act="add" style="color:var(--accent)">${I.plus} Add Budget</button></div>
-        <div class="col" style="gap:18px">${b.items.length ? b.items.map((i) => h`<button class="col" style="gap:6px;text-align:left" data-act="edit" data-id="${i.id}">
+        <div class="col" style="gap:18px">${b.items.length ? b.items.map((i) => h`<a class="col" style="gap:6px;text-align:left;color:inherit" href="#/budget/${i.id}${mode === 'all' ? '?mode=all' : ''}">
           <div class="row"><span class="ico" style="width:40px;height:40px">${i.category?.icon}</span><div class="grow"><b>${i.category?.name}</b><div class="muted small">${i.tx_count ? `${i.tx_count} transaction${i.tx_count === 1 ? '' : 's'}` : 'No transactions yet'} · ${i.period}${i.rollover ? ' · rollover' : ''}</div></div>
             <div style="text-align:right"><b>${money(i.spent_cents, { decimals: false })} / ${money(i.limit_cents, { decimals: false })}</b><div class="small ${stCls(i.status)}">${pct(i.pct)} spent</div></div></div>
           ${bar(i.pct)}
           <div class="row between small"><span class="${i.status === 'ok' ? 'muted' : stCls(i.status)}">${i.status === 'over' ? `⚠ Over by ${money(-i.remaining_cents)}` : i.status === 'warning' ? `⚠ Almost over budget · ${money(i.remaining_cents)} left` : `${money(i.remaining_cents)} remaining`}</span>
             <span class="${i.status === 'ok' ? 'pos' : 'muted'}">${i.everyday_safe_cents != null ? `Everyday: ${money(i.everyday_safe_cents)}/day` : i.scheduled_only ? '' : i.safe_per_day_cents != null ? `Safe: ${money(i.safe_per_day_cents)}/day` : ''}</span></div>
-          ${i.proj_cents != null ? h`<div class="small ${i.pace_status === 'over' ? 'neg' : i.pace_status === 'watch' ? 'warn' : 'muted'}">On course for ${money(i.proj_cents, { decimals: false })} by month-end${i.due_cents > 0 ? ` · ${money(i.due_cents, { decimals: false })} still due` : ''}</div>` : ''}</button>`)
+          ${i.proj_cents != null ? h`<div class="small ${i.pace_status === 'over' ? 'neg' : i.pace_status === 'watch' ? 'warn' : 'muted'}">On course for ${money(i.proj_cents, { decimals: false })} by month-end${i.due_cents > 0 ? ` · ${money(i.due_cents, { decimals: false })} still due` : ''}</div>` : ''}</a>`)
           : h`<div class="empty"><span class="e">🧮</span>No category budgets yet.</div>`}</div></div>`);
   };
   bind(root, { click: { mode: (el) => { mode = el.dataset.v; draw(); }, add: () => budgetSheet(undefined, new Set(data.items.map((x) => x.category_id))), edit: (el) => budgetSheet(data.items.find((x) => x.id === Number(el.dataset.id))) } });
