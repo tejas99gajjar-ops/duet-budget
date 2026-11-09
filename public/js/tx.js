@@ -9,7 +9,7 @@ export function txRow(t, href) {
     : t.type === 'expense' ? h`<span class="amt neg">-${money(t.amount_cents)}</span>` : h`<span class="amt" style="color:var(--blue)">${money(t.amount_cents)}</span>`;
   const title = t.note || t.category?.name || (t.type === 'transfer' ? 'Transfer' : 'Transaction');
   const where = t.type === 'transfer' ? `${t.wallet_name} → ${t.to_wallet_name}` : t.wallet_name;
-  return h`<a class="tx" href="${href ? href(t) : `#/tx/${t.id}`}"><span class="ico">${txIcon(t)}</span><span class="grow"><div class="t ellipsis">${title}</div>
+  return h`<a class="tx" href="${typeof href === 'function' ? href(t) : `#/tx/${t.id}`}"><span class="ico">${txIcon(t)}</span><span class="grow"><div class="t ellipsis">${title}</div>
     <div class="s">${byChip(t.created_by)}${where}${t.recurring_id ? ' · 🔁' : ''}${t.status === 'pending' ? ' · pending' : ''}</div>
     ${t.tags.length ? h`<div style="margin-top:4px">${t.tags.map((g) => h`<span class="tag">#${g}</span>`)}</div>` : ''}</span>${amt}</a>`;
 }
