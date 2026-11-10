@@ -1,1 +1,81 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#1DDB97"/><circle cx="256" cy="256" r="128" fill="none" stroke="#0D1117" stroke-width="44"/><path d="M256 190v70l44 40" fill="none" stroke="#0D1117" stroke-width="40" stroke-linecap="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <defs>
+
+    <!-- Background: deep navy, warmer near the sun -->
+    <radialGradient id="bg" cx="62%" cy="20%" r="68%">
+      <stop offset="0%"   stop-color="#1c2008"/>
+      <stop offset="25%"  stop-color="#0c1626"/>
+      <stop offset="100%" stop-color="#040810"/>
+    </radialGradient>
+
+    <!-- Sun: warm-white core → gold → amber → orange -->
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#fefdf4"/>
+      <stop offset="22%"  stop-color="#ffe566"/>
+      <stop offset="58%"  stop-color="#f5a623"/>
+      <stop offset="100%" stop-color="#de5f08"/>
+    </radialGradient>
+
+    <!-- Mountain: slate-blue at peak, deep navy at base -->
+    <linearGradient id="mtn" x1="62" y1="20" x2="62" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#243460"/>
+      <stop offset="40%"  stop-color="#182040"/>
+      <stop offset="100%" stop-color="#0d1628"/>
+    </linearGradient>
+
+    <!-- Bar chart: dark violet at base → bright purple at top -->
+    <linearGradient id="bar" x1="0" y1="94" x2="0" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#3a2878"/>
+      <stop offset="100%" stop-color="#8060d8"/>
+    </linearGradient>
+
+    <!-- Sun bloom: large Gaussian glow -->
+    <filter id="bloom" x="-130%" y="-130%" width="360%" height="360%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Tallest bar glow -->
+    <filter id="bargl" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+  </defs>
+
+  <!-- ── Background ── -->
+  <rect width="108" height="108" fill="url(#bg)"/>
+
+  <!-- ── Atmospheric haze around sun ── -->
+  <ellipse cx="62" cy="20" rx="50" ry="42" fill="#f5a623" opacity="0.040"/>
+  <ellipse cx="62" cy="20" rx="34" ry="26" fill="#f5a623" opacity="0.048"/>
+  <ellipse cx="62" cy="20" rx="20" ry="15" fill="#f5a623" opacity="0.056"/>
+
+  <!-- ── Sun disc (behind mountain) ── -->
+  <circle cx="62" cy="20" r="20" fill="url(#sun)" filter="url(#bloom)"/>
+
+  <!-- ── Mountain silhouette ── -->
+  <path d="M0 96 L38 50 L56 62 L62 20 L108 96Z" fill="url(#mtn)"/>
+
+  <!-- ── Snow cap at peak ── -->
+  <path d="M62 20 L68 34 L57 32Z" fill="#ffffff" opacity="0.11"/>
+
+  <!-- ── Ridge edge highlight ── -->
+  <path d="M38 50 L62 20" stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.09" fill="none"/>
+
+  <!-- ── Ground shadow / base line ── -->
+  <rect x="0" y="94" width="108" height="2" rx="1" fill="#101828" opacity="0.7"/>
+
+  <!-- ── Ascending bar chart (foreground, lower-left) ── -->
+  <rect x="10" y="80" width="10" height="14" rx="2.5" fill="url(#bar)" opacity="0.82"/>
+  <rect x="23" y="72" width="10" height="22" rx="2.5" fill="url(#bar)" opacity="0.88"/>
+  <rect x="36" y="62" width="10" height="32" rx="2.5" fill="url(#bar)" opacity="0.93"/>
+  <rect x="49" y="50" width="10" height="44" rx="2.5" fill="url(#bar)" filter="url(#bargl)"/>
+
+  <!-- ── Bar cap highlights ── -->
+  <rect x="10" y="80" width="10" height="1.5" rx="1.5" fill="#ffffff" opacity="0.14"/>
+  <rect x="23" y="72" width="10" height="1.5" rx="1.5" fill="#ffffff" opacity="0.14"/>
+  <rect x="36" y="62" width="10" height="1.5" rx="1.5" fill="#ffffff" opacity="0.14"/>
+  <rect x="49" y="50" width="10" height="1.5" rx="1.5" fill="#ffffff" opacity="0.18"/>
+
+</svg>
