@@ -37,7 +37,7 @@ export async function analytics(root, q) {
     const maxItem = a.items[0]?.amount_cents || 1;
     const wdStart = a.week_start, wdOrder = [...Array(7).keys()].map((i) => (i + wdStart) % 7), wdMax = Math.max(1, ...a.weekday_cents);
     const shown = st.expanded ? a.items : a.items.slice(0, 12);
-    html(root, h`<div class="page-head"><h1>Analytics</h1></div>
+    html(root, h`<div class="page-head"><h1>Analytics</h1><button class="tb-av" data-menu aria-label="Account and settings"><span class="avatars">${space().members.map(avatar)}</span></button></div>
       <div class="seg" role="tablist">${['day', 'week', 'month', 'year'].map((p) => h`<button class="${st.period === p ? 'on' : ''}" data-act="period" data-v="${p}" role="tab">${p[0].toUpperCase() + p.slice(1)}</button>`)}</div>
       <div class="row between"><button class="iconbtn" data-act="prev" aria-label="Previous ${st.period}">${I.back}</button>
         <div class="center grow"><button data-act="pickopen" style="font-weight:700;font-size:15px">${label(a)} <span class="dim">▾</span></button>
