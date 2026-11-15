@@ -48,3 +48,22 @@ export function openMenu() {
     </div>
     <button class="btn ghost" data-theme-toggle>Switch light / dark</button>`, {});
 }
+
+// ---- swipe order: the pages a left/right swipe moves between (see gestures.js) ----
+const DETAIL = ['target', 'projection', 'gap', 'montecarlo', 'scenarios', 'calc'];
+const PLAN_FLOW = ['#/fire', ...DETAIL.map((d) => `#/fire/detail/${d}`), '#/fire/goals', '#/fire/inputs', '#/fire/live', '#/fire/checkin', '#/fire/learn'];
+const MONEY_FLOW = MONEY.map((m) => m[2]);
+/** For a route path like "budgets" or "fire/detail/gap": { prev, next } hashes, or null when swiping should do nothing here. */
+export function swipeNeighbors(path) {
+  const [a, b, c] = path.split('/');
+  let flow, key;
+  if (MONEY.some((m) => m[0] === a) && !b) { flow = MONEY_FLOW; key = '#/' + a; }
+  else if (a === 'fire') {
+    flow = PLAN_FLOW;
+    if (!b) key = '#/fire';
+    else if (b === 'detail') key = `#/fire/detail/${c || 'target'}`;
+    else if (['goals', 'inputs', 'live', 'checkin', 'learn'].includes(b) && !c) key = '#/fire/' + b;
+  }
+  const i = flow && key ? flow.indexOf(key) : -1; if (i < 0) return null;
+  return { prev: flow[i - 1] || null, next: flow[i + 1] || null };
+}

@@ -156,3 +156,24 @@ input[type=range]{accent-color:var(--primary)}
 
 /* ---- Plan inside the one app: the top bar already shows where you are, so the old trail is redundant ---- */
 .fx-crumbs{display:none!important}
+
+/* ---- numbers stay on one line: label on the left, figure on the right ---- */
+.inner:has(>.eyebrow+b),.inner:has(>.eyebrow+.hfig),.inner:has(>.eyebrow+div),.inner:has(>.eyebrow+button){display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:nowrap}
+.inner>.eyebrow{white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.inner>.eyebrow+b,.inner>.eyebrow+.hfig,.inner>.eyebrow+div{white-space:nowrap;flex:none;margin-top:0;text-align:right}
+.inner>.eyebrow+b small,.inner>.eyebrow+b .muted{white-space:nowrap}
+.hfig,.hnum b,.big,.big2,.bal,.amt{white-space:nowrap;overflow-wrap:normal}
+.hnum{overflow-wrap:normal}
+.stats .inner{padding:11px 14px}
+.stats button.inner{width:100%;text-align:left}
+.hnum small{display:block;margin:3px 0 0;white-space:nowrap}
+
+/* ---- swipe between pages: the new page slides in from the side you swiped towards ---- */
+@keyframes slideL{from{opacity:0;transform:translateX(28px)}}
+@keyframes slideR{from{opacity:0;transform:translateX(-28px)}}
+#view.slide-l{animation:slideL .22s ease-out}#view.slide-r{animation:slideR .22s ease-out}
+.sheet{touch-action:pan-y}
+
+/* FIRE figures never split across lines */
+.fx-tile .v,.fx-row>b,.fx b[data-lv],.fx-ex-v,.fx-hero-n{white-space:nowrap;overflow-wrap:normal}
+.fx-row>b{flex:none}

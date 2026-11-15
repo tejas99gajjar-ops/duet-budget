@@ -9,7 +9,7 @@ export const raw = (s) => new Safe(s);
 export const html = (el, safe) => { el.innerHTML = safe.s; };
 
 export const state = { boot: null, summaryDirty: true };
-export const APP_VERSION = 'v31 · Analytics menu + polish · 15 Nov 2026';   // shown under "How are these made?" so it is easy to tell which version a device is running
+export const APP_VERSION = 'v32 · swipe gestures, one-line figures · 15 Nov 2026';   // shown under "How are these made?" so it is easy to tell which version a device is running
 
 import { request, downloadCsv } from './local-api.js';
 export { downloadCsv };
@@ -33,7 +33,7 @@ export function money(cents, { sign = false, decimals = true, compact = false } 
   const key = cur + decimals + compact;
   fmtCache[key] ||= new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, minimumFractionDigits: decimals && !compact ? 2 : 0, maximumFractionDigits: decimals && !compact ? 2 : 0, notation: compact ? 'compact' : 'standard' });
   const s = fmtCache[key].format(Math.abs(cents) / 100);
-  return cents < 0 ? '-' + s : sign && cents > 0 ? '+' + s : s;
+  return cents < 0 ? '-\u2060' + s : sign && cents > 0 ? '+\u2060' + s : s;   // U+2060 word joiner: the sign can never be left alone at the end of a line
 }
 export const currencySymbol = () => (0).toLocaleString('en-US', { style: 'currency', currency: space().currency, minimumFractionDigits: 0 }).replace(/[\d\s]/g, '');
 export function parseCents(str) {

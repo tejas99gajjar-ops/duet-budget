@@ -1,5 +1,6 @@
 import { state, loadBoot, h, html, toast, sheetOpen, pref, setPref, applyTheme } from './core.js';
 import { renderTopbar, openMenu, moneyHome } from './topbar.js';
+import { initGestures } from './gestures.js';
 import { createSupabaseBackend } from './backend.js';
 import * as S from './store.js';
 import * as auth from './auth.js';
@@ -45,7 +46,8 @@ async function render({ keepScroll = false } = {}) {
   if (r.setup && (!signedIn() || hasSpace())) { location.hash = signedIn() ? '#/dashboard' : '#/welcome'; return; }
   if (hasSpace()) await loadBoot();
   current = r;
-  const root = fresh(), showNav = !r.public && !r.setup && !r.noNav && r.tab !== undefined;
+  const root = fresh(); if (window.__slide) { root.classList.add('slide-' + window.__slide); window.__slide = null; }
+  const showNav = !r.public && !r.setup && !r.noNav && r.tab !== undefined;
   nav.hidden = !showNav; root.classList.toggle('noNav', !showNav);
   renderTopbar(document.getElementById('appsw'), r.public || r.setup ? null : r.bar, path);
   nav.querySelectorAll('a[data-tab]').forEach((a) => a.classList.toggle('on', a.dataset.tab === r.tab));
@@ -92,6 +94,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !sessionStorage.getItem('duet.reloaded')) { sessionStorage.setItem('duet.reloaded', '1'); location.reload(); } });
 }
 
+initGestures();
 (async function start() {
   S.configure(window.DUET_TEST_BACKEND || createSupabaseBackend(window.DUET_CONFIG)); // DUET_TEST_BACKEND is only set by test/harness
   if (S.state.backend) {

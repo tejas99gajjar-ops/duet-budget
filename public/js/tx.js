@@ -47,8 +47,8 @@ export async function dashboard(root) {
   const tone = (st) => (st === 'over' ? 'var(--red)' : st === 'warning' ? 'var(--amber)' : 'var(--accent)');
   // "Needs attention": only things that call for action, each one tap away from the screen that fixes it
   const att = [];
-  over.slice(0, 2).forEach((i) => att.push({ href: `#/budget/${i.id}`, icon: i.category?.icon || '⚠️', tone: 'neg', title: `${i.category?.name || 'Budget'} is over budget`, sub: `${money(Math.max(0, -i.remaining_cents))} over · ${money(i.spent_cents)} of ${money(i.limit_cents)}` }));
-  if (ov && ov.status !== 'over' && ov.pace_status === 'over') att.push({ href: '#/budgets', icon: '📈', tone: 'warn', title: 'On course to overspend', sub: `About ${money(ov.proj_cents, { decimals: false })} by month-end vs ${money(ov.limit_cents, { decimals: false })} budget` });
+  over.slice(0, 2).forEach((i) => att.push({ href: `#/budget/${i.id}`, icon: i.category?.icon || '⚠️', tone: 'neg', title: `${i.category?.name || 'Budget'} is over budget`, sub: `${money(Math.max(0, -i.remaining_cents))} over · ${money(i.spent_cents)} of\u00a0${money(i.limit_cents)}` }));
+  if (ov && ov.status !== 'over' && ov.pace_status === 'over') att.push({ href: '#/budgets', icon: '📈', tone: 'warn', title: 'On course to overspend', sub: `About ${money(ov.proj_cents, { decimals: false })} by month-end vs\u00a0${money(ov.limit_cents, { decimals: false })}\u00a0budget` });
   warn.slice(0, 1).forEach((i) => att.push({ href: `#/budget/${i.id}`, icon: i.category?.icon || '⚠️', tone: 'warn', title: `${i.category?.name || 'Budget'} is nearing its limit`, sub: `${pct(i.pct)} spent · ${money(Math.max(0, i.remaining_cents))} left` }));
   dueList.slice(0, 2).forEach((c) => att.push({ href: '#/pace', icon: '📅', tone: 'warn', title: `${c.name} due ${whenText(c.dueIn)}`, sub: `${money(c.amount, { decimals: false })} on the ${ordinal(c.day)}` }));
   if (shape) att.push({ href: '#/pace', icon: shape.icon, tone: shape.tone === 'good' ? 'pos' : 'warn', title: shape.title, sub: shape.first });
@@ -65,7 +65,7 @@ export async function dashboard(root) {
           <div class="small ${ov.remaining_cents < 0 ? 'neg' : 'muted'}">${ov.remaining_cents < 0 ? `${money(-ov.remaining_cents)} over budget` : `${money(ov.remaining_cents)} left`}</div>
           ${ov.proj_cents != null ? h`<div class="small ${ov.pace_status === 'over' ? 'neg' : ov.pace_status === 'watch' ? 'warn' : 'muted'}">On course for ${money(ov.proj_cents, { decimals: false })}</div>` : ''}`
           : h`<div class="hnum" style="font-size:18px">No budget yet</div><a class="link" href="#/budgets">Create your first budget</a>`}</div></div>
-      <div class="row" style="margin-top:14px;gap:10px"><div class="inner grow"><div class="eyebrow">Income</div><div class="pos hfig">${money(s.income_cents, { sign: true })}</div></div>
+      <div class="col" style="margin-top:14px;gap:8px"><div class="inner grow"><div class="eyebrow">Income</div><div class="pos hfig">${money(s.income_cents, { sign: true })}</div></div>
         <div class="inner grow"><div class="eyebrow">Expenses</div><div class="neg hfig">${s.expense_cents ? '-' : ''}${money(s.expense_cents)}</div></div></div></div>
     <div class="card hcard"><div class="row between" style="margin-bottom:6px"><h2>Needs attention</h2>${att.length ? h`<span class="pill bad">${att.length}</span>` : ''}</div>
       <div class="col" style="gap:8px" id="attn">${att.length ? att.slice(0, 4).map(attRow) : h`<div class="arow calm"><span class="arow-i">✅</span><span class="grow"><b>All clear</b><div class="small muted">Nothing needs your attention right now.</div></span></div>`}</div></div>

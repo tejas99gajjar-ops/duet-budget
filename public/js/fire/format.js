@@ -1,13 +1,13 @@
 // Rupee, percent and date formatting for the planner (lakh / crore, as in the designs).
 const trim = (n, d) => { const s = n.toFixed(d); return s.includes('.') ? s.replace(/\.?0+$/, '') : s; };
-const sgn = (v, opt) => (v < 0 ? '-' : opt?.sign && v > 0 ? '+' : '');
+const sgn = (v, opt) => (v < 0 ? '-\u2060' : opt?.sign && v > 0 ? '+\u2060' : '');   // word joiner keeps the sign glued to the amount
 
 /** ₹3.2 crore, ₹30 lakh, ₹85,000 */
 export function inr(v, opt = {}) {
   if (v == null || Number.isNaN(v)) return '—';
   const a = Math.abs(v), s = sgn(v, opt);
-  if (a >= 1e7) return `${s}₹${trim(a / 1e7, 2)} crore`;
-  if (a >= 1e5) return `${s}₹${trim(a / 1e5, 2)} lakh`;
+  if (a >= 1e7) return `${s}₹${trim(a / 1e7, 2)}\u00a0crore`;
+  if (a >= 1e5) return `${s}₹${trim(a / 1e5, 2)}\u00a0lakh`;
   return `${s}₹${Math.round(a).toLocaleString('en-IN')}`;
 }
 /** ₹2.9Cr, ₹85L, ₹85K, ₹850 */
