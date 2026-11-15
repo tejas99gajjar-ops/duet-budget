@@ -153,3 +153,6 @@ input[type=range]{accent-color:var(--primary)}
 /* ---- Money tab ---- */
 .fbtn{position:relative;flex:none}.fbtn.on{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary)}
 .fbadge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--primary);color:#fff;font-size:10px;font-style:normal;font-weight:700;display:grid;place-items:center;padding:0 4px}
+
+/* ---- Plan inside the one app: the top bar already shows where you are, so the old trail is redundant ---- */
+.fx-crumbs{display:none!important}
