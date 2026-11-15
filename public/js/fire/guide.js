@@ -3,6 +3,8 @@
 // It only adds things around the existing screens; it never changes what a screen calculates or stores.
 import { h, sheet } from '../core.js';
 import * as X from './ctx.js';
+import { inr, inrC } from './format.js';
+import { sectionHealth } from './health.js';
 
 const KEY = 'duet.fire.help', STEPS_KEY = 'duet.fire.steps';
 const rd = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -79,6 +81,7 @@ export function decorate(box, parts) {
   const on = helpOn(), key = screenKey(parts);
   if (!headEl || box.querySelector('.fx-helpbar,.fx-newbar')) return;
   if (a === '' && !on) { headEl.insertAdjacentHTML('afterend', '<button type="button" class="fx-newbar" data-newhere><span>🧭</span><span class="grow"><b>New here?</b> Start with a 1-minute guide</span><span>›</span></button>'); return; }
+  if (on && a === '') helpCards(box);
   if (on && key != null && helpFor(key)) {
     headEl.insertAdjacentHTML('afterend', `<div class="fx-helpbar"><button type="button" data-help="${key}">👀 What am I looking at?</button><button type="button" data-newhere>${a === '' ? 'Guide ✓' : 'Guide'}</button></div>`);
     const i = FLOW.findIndex((f) => f[0] === key), nxt = FLOW[i + 1];
@@ -95,4 +98,67 @@ export function wireGuide(getExample) {
     const g = e.target.closest?.('[data-newhere]'); if (g) { e.preventDefault(); openGuide({ onExample: getExample?.() }); return; }
     const hp = e.target.closest?.('[data-help]'); if (hp) { e.preventDefault(); openHelp(hp.dataset.help); }
   });
+}
+
+// ---- extra pictures and plain-language lines on My answer (only while helpers are on) ----
+const esc = (x) => String(x ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const yearOf = (d) => Number(String(d).slice(0, 4));
+
+/** "Your retirement in one picture": a road from today to the planning age, with the day you stop working marked. */
+function lifeRoad(res, plan) {
+  const m = res.meta, a0 = m.ageNow, a1 = m.retireAge, a2 = m.horizonAge, span = Math.max(1, a2 - a0), W = 320;
+  const x = (age) => 8 + ((Math.max(a0, Math.min(a2, age)) - a0) / span) * (W - 16);
+  const ro = res.gap.runsOutAge && res.gap.runsOutAge < a2 ? res.gap.runsOutAge : null;
+  const marks = [...res.goals.filter((g) => g.date && g.kind !== 'retirement').map((g) => ({ age: yearOf(g.date) - m.birth, t: g.name, i: '🎯' })),
+    ...(plan.events || []).filter((e) => e.enabled !== false && e.date).map((e) => ({ age: yearOf(e.date) - m.birth, t: e.name || e.kind, i: '📌' }))]
+    .filter((k) => k.age > a0 && k.age < a2).sort((p, q) => p.age - q.age).slice(0, 5);
+  const earn = Math.max(0, a1 - a0), live = Math.max(0, (ro || a2) - a1);
+  const svg = `<svg viewBox="0 0 ${W} 84" role="img" aria-label="From age ${a0} to ${a2}: you earn and save until ${a1}, then live on your pot" style="width:100%;height:auto">
+    <rect x="${x(a0)}" y="34" width="${Math.max(0, x(a1) - x(a0))}" height="16" rx="8" fill="var(--accent)"/>
+    <rect x="${x(a1)}" y="34" width="${Math.max(0, x(ro || a2) - x(a1))}" height="16" rx="8" fill="var(--fx)"/>
+    ${ro ? `<rect x="${x(ro)}" y="34" width="${Math.max(0, x(a2) - x(ro))}" height="16" rx="8" fill="var(--red)" opacity=".75"/>` : ''}
+    ${marks.map((k) => `<circle cx="${x(k.age)}" cy="42" r="5" fill="var(--card)" stroke="var(--text)" stroke-width="1.5"/>`).join('')}
+    <text x="${x(a0)}" y="26" font-size="10" fill="var(--muted)" text-anchor="start">Today</text>
+    <text x="${x(a1)}" y="26" font-size="10" fill="var(--text)" font-weight="700" text-anchor="middle">Stop working</text>
+    <text x="${x(a2)}" y="26" font-size="10" fill="var(--muted)" text-anchor="end">Plan to ${a2}</text>
+    <text x="${x(a0)}" y="68" font-size="11" fill="var(--text)" text-anchor="start">${a0}</text>
+    <text x="${x(a1)}" y="68" font-size="11" fill="var(--text)" font-weight="700" text-anchor="middle">${a1}</text>
+    <text x="${x(a2)}" y="68" font-size="11" fill="var(--text)" text-anchor="end">${a2}</text></svg>`;
+  return `<section class="fx-card fx-road"><h3>Your retirement in one picture</h3>${svg}
+    <div class="fx-road-key"><span><i style="background:var(--accent)"></i>Earning and saving · ${earn} yrs</span><span><i style="background:var(--fx)"></i>Living on your pot · ${live} yrs</span>${ro ? `<span><i style="background:var(--red)"></i>Money runs out at ${ro}</span>` : ''}</div>
+    ${marks.length ? `<div class="fx-road-marks">${marks.map((k) => `<span>${k.i} ${esc(k.t)} · age ${k.age}</span>`).join('')}</div>` : ''}
+    <p class="fx-sub" style="margin-top:8px">${ro ? `On this plan the money runs out around age ${ro}. The Gap tab shows how to fix that.` : `On this plan the money lasts past ${a2}.`}</p></section>`;
+}
+
+/** One suggested next step, chosen from the person's own numbers. */
+function doNext(res, plan) {
+  const hl = Object.values(sectionHealth(plan, X.today())).filter((s) => s && s.status), need = hl.filter((s) => s.status !== 'ok').length;
+  if (need) return { icon: '📝', t: `Finish your facts: ${need} ${need === 1 ? 'section needs' : 'sections need'} a look`, s: 'The answer is only as good as what goes in.', href: '#/fire/inputs', go: 'Open My facts' };
+  const g = res.gap;
+  if (g.amount > 0) { const c = X.close(); return { icon: '🎯', t: `You are ${inr(g.amount)} short`, s: c?.extraMonthly ? `Investing ${inr(c.extraMonthly)} more a month closes it. Try it with the slider below.` : 'See the ways to close the gap.', href: '#/fire/detail/gap', go: 'See ways to close the gap' }; }
+  return { icon: '✅', t: 'You are on track. Test how safe the plan is', s: 'A stress test runs thousands of possible futures and shows how often your money lasts.', href: '#/fire/detail/montecarlo', go: 'Run the stress test' };
+}
+
+/** A few plain sentences about the person's own numbers. */
+function everyday(res) {
+  const m = res.meta, t = res.target, g = res.gap, spendYear = (m.spendNow || 0) * 12;
+  const rows = [['🏁', `You plan to stop working at <b>${m.retireAge}</b>, in <b>${Math.round(m.yearsToRet)} years</b>.`],
+    ['🏠', `In retirement you would spend about <b>${inr(t.monthlyToday)} a month</b> in today's money.`]];
+  if (spendYear > 0) rows.push(['🧮', `The pot you need (<b>${inr(t.total)}</b>) is about <b>${Math.round(t.total / spendYear)} years</b> of what you spend today.`]);
+  if (m.savingsRate != null) rows.push(['💰', `You save about <b>${Math.round(Math.max(0, m.savingsRate) * 100)}%</b> of your take-home pay.`]);
+  if (m.nominalFactor > 1) rows.push(['📉', `Prices rise about <b>${Math.round((m.infl || 0) * 100)}%</b> a year, so ₹1 lakh at retirement buys only what <b>${inr(100000 / m.nominalFactor)}</b> buys today.`]);
+  rows.push([g.runsOutAge && g.runsOutAge < m.horizonAge ? '⚠️' : '🛟', g.runsOutAge && g.runsOutAge < m.horizonAge ? `Your money would run out around age <b>${g.runsOutAge}</b>.` : `Your money lasts past age <b>${m.horizonAge}</b> on this plan.`]);
+  return rows;
+}
+
+export function helpCards(box) {
+  const hero = box.querySelector('.fx-hero2'); if (!hero || box.querySelector('.fx-helpcards')) return;
+  let res, plan; try { plan = X.getPlan(); res = X.run(); } catch { return; }
+  if (!plan || !res) return;
+  const nx = doNext(res, plan), rows = everyday(res);
+  hero.insertAdjacentHTML('afterend', `<div class="fx-helpcards col" style="gap:14px">
+    <section class="fx-card fx-next"><div class="fx-next-i">${nx.icon}</div><div class="grow"><div class="eyebrow">Do this next</div><b>${esc(nx.t)}</b><div class="fx-sub">${esc(nx.s)}</div></div></section>
+    <a class="fx-btn" href="${nx.href}" style="margin-top:-6px">${esc(nx.go)} →</a>
+    ${lifeRoad(res, plan)}
+    <section class="fx-card"><h3>In everyday terms</h3><div class="col" style="gap:10px;margin-top:10px">${rows.map(([i, t]) => `<div class="fx-eday"><span>${i}</span><span>${t}</span></div>`).join('')}</div></section></div>`);
 }
