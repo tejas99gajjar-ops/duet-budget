@@ -7,7 +7,7 @@ import { head, fxNav, IC, toast } from './ui.js';
 import { linkTerms, openTerm } from './terms.js';
 
 const cssHref = new URL('../../fire.css', import.meta.url).href;
-function ensureCss() { if (!document.getElementById('fire-css')) { const l = document.createElement('link'); l.id = 'fire-css'; l.rel = 'stylesheet'; l.href = cssHref; document.head.append(l); } }
+function ensureCss() { if (!document.getElementById('fire-css')) { const l = document.createElement('link'); l.id = 'fire-css'; l.rel = 'stylesheet'; l.href = cssHref; document.head.append(l); const ui = document.getElementById('heroui-css'); if (ui) document.head.append(ui); } }   // keep the HeroUI layer after fire.css so it wins on equal specificity
 
 const SCREENS = {
   '': () => import('./overview.js').then((m) => m.overview),

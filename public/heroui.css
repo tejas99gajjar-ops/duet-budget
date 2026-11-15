@@ -1,0 +1,115 @@
+/* HeroUI-inspired design layer (look only: colours, radii, shadows, component shapes).
+   Loaded after styles.css, and re-appended after fire.css, so it wins on equal specificity.
+   Nothing here changes behaviour, data or layout order. Delete this file + its <link> to go back to the old look. */
+
+/* ---- tokens: HeroUI neutral (zinc) scale + semantic colours ---- */
+:root{
+  --bg:#000;--card:#18181B;--inner:#27272A;--line:#3F3F46;--text:#ECEDEE;--muted:#A1A1AA;--dim:#71717A;
+  --accent:#17C964;            /* success: money-positive, progress */
+  --red:#F31260;--amber:#F5A524;--blue:#338EF7;--purple:#9353D3;
+  --primary:#006FEE;--on-primary:#fff;--secondary:#9353D3;
+  --cursor:#3F3F46;
+  --r-sm:8px;--r-md:12px;--r-lg:14px;--r-xl:20px;
+  --shadow-sm:0 0 1px rgba(255,255,255,.18),0 2px 8px rgba(0,0,0,.5);
+  --shadow:0 10px 30px rgba(0,0,0,.55);
+  /* fire planner tokens follow the same scale */
+  --fx:#9353D3;--fx2:#A471DB;--fx-soft:color-mix(in srgb,#9353D3 20%,transparent);
+  --fx-tile:#27272A;--fx-card:#18181B;--fx-line:#3F3F46;--fx-ok:#17C964;--fx-warn:#F5A524;--fx-bad:#F31260;--fx-blue:#338EF7;
+}
+:root[data-theme=light]{
+  --bg:#F4F4F5;--card:#FFFFFF;--inner:#EBEBEF;--line:#E4E4E7;--text:#11181C;--muted:#52525B;--dim:#A1A1AA;
+  --accent:#12A150;
+  --red:#C20E4D;--amber:#C4841D;--blue:#006FEE;--purple:#7828C8;
+  --primary:#006FEE;--secondary:#7828C8;
+  --cursor:#FFFFFF;
+  --shadow-sm:0 0 5px rgba(0,0,0,.05),0 2px 10px rgba(0,0,0,.07);
+  --shadow:0 10px 30px rgba(24,24,27,.12);
+  --fx:#7828C8;--fx2:#9353D3;--fx-soft:color-mix(in srgb,#7828C8 14%,transparent);
+  --fx-tile:#EBEBEF;--fx-card:#FFFFFF;--fx-line:#E4E4E7;--fx-ok:#12A150;--fx-warn:#C4841D;--fx-bad:#C20E4D;--fx-blue:#006FEE;
+}
+
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:0}
+h1{font-weight:700}
+
+/* ---- surfaces ---- */
+.card{border-radius:var(--r-xl);box-shadow:var(--shadow-sm)}
+:root:not([data-theme=light]) .card{border:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+.inner{border-radius:var(--r-lg)}
+.glow:before{opacity:.6}
+.feature,.wallet{border-radius:var(--r-xl);box-shadow:var(--shadow-sm)}
+.tx{border-radius:var(--r-lg)}
+.ico{border-radius:var(--r-md);background:var(--card)}
+.tag{border-radius:var(--r-sm)}
+.iconbtn{background:var(--inner);border:0;color:var(--muted)}
+.logo{background:var(--primary);border-radius:var(--r-md)}.logo svg{stroke:var(--on-primary)}
+.brand small{color:var(--primary)}
+.link,.moretips summary{color:var(--primary)}
+
+/* ---- buttons (solid / flat / bordered) ---- */
+.btn{border-radius:var(--r-lg);font-weight:600;font-size:15.5px;padding:14px;background:var(--primary);color:var(--on-primary);box-shadow:0 4px 14px color-mix(in srgb,var(--primary) 30%,transparent);transition:transform .08s,opacity .15s}
+.btn:active{transform:scale(.97)}
+.btn.ghost{background:var(--inner);color:var(--text);border:0;box-shadow:none}
+.btn.danger{background:color-mix(in srgb,var(--red) 16%,transparent);color:var(--red);border:0}
+.btn.small{border-radius:var(--r-md);font-weight:600}
+
+/* ---- inputs ---- */
+.input{background:var(--inner);border:2px solid transparent;border-radius:var(--r-lg);padding:12px 14px;transition:border-color .15s,background .15s}
+.input:focus{border-color:var(--primary);background:var(--card)}
+label.f{font-weight:600;letter-spacing:.06em}
+input[type=range]{accent-color:var(--primary)}
+
+/* ---- tabs / segmented control: track + floating cursor ---- */
+.seg{background:var(--inner);border:0;border-radius:var(--r-lg);padding:4px}
+.seg button{border-radius:var(--r-md);font-weight:600;transition:background .15s,color .15s}
+.seg button.on{background:var(--cursor);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.22)}
+.seg.exp button.on{background:var(--red);color:#fff}.seg.xfer button.on{background:var(--blue);color:#fff}
+.seg.small{border-radius:999px}.seg.small button{border-radius:999px}
+.appsw-seg{background:var(--inner);border:0;border-radius:var(--r-lg);padding:4px}
+.appsw-seg a{border-radius:var(--r-md);font-weight:700;color:var(--muted)}
+.appsw-seg a.on{background:var(--primary);color:var(--on-primary)}
+#appsw[data-sec=fire] .appsw-seg a.on{background:var(--secondary);color:#fff}
+.appsw-help{border:0;background:var(--inner);border-radius:var(--r-lg);font-weight:700}
+
+/* ---- chips, tiles, pills (flat variant) ---- */
+.chip{border:0;background:var(--inner);border-radius:999px;font-weight:600}
+.chip.on{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary)}
+.tile{border:2px solid transparent;background:var(--inner);border-radius:var(--r-lg)}
+.tile.on{border-color:var(--primary);color:var(--primary);background:color-mix(in srgb,var(--primary) 12%,var(--card))}
+.pill{border:0;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.pill.bad{border:0}
+.swatch.on{outline-color:var(--primary)}
+
+/* ---- switch & progress ---- */
+.switch{background:var(--line)}.switch.on{background:var(--primary)}
+.switch:after{box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.bar,.pbar{border-radius:999px;background:var(--inner)}.bar i{border-radius:999px}
+.pbar>i{border-radius:inherit}
+
+/* ---- navigation ---- */
+#nav{background:color-mix(in srgb,var(--card) 88%,transparent);border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+#nav a.on{color:var(--primary)}
+#nav .fab{background:var(--primary);color:var(--on-primary);box-shadow:0 8px 22px color-mix(in srgb,var(--primary) 40%,transparent)}
+#appsw{background:color-mix(in srgb,var(--bg) 85%,transparent)}
+
+/* ---- overlays ---- */
+.overlay{background:rgba(0,0,0,.55);backdrop-filter:blur(4px)}
+.sheet{border-radius:var(--r-xl) var(--r-xl) 0 0;background:var(--card);border:0;box-shadow:0 -10px 40px rgba(0,0,0,.35)}
+.sheet .grab{background:var(--line)}
+.toast{border:0;border-radius:var(--r-lg);background:var(--card);box-shadow:var(--shadow)}
+.toast.err{color:var(--red);box-shadow:0 0 0 1.5px var(--red),var(--shadow)}
+.note-card{border-radius:var(--r-lg)}
+
+/* ---- spending pace / lists ---- */
+.catrow,.pstat,.pbox,.tipline,.insight{border-radius:var(--r-lg)}
+.list-row,.payrow,.recrow,.toprow{border-color:color-mix(in srgb,var(--line) 70%,transparent)}
+
+/* ---- FIRE planner ---- */
+.fx-card{border-radius:var(--r-xl);box-shadow:var(--shadow-sm)}
+:root:not([data-theme=light]) .fx-card{border:1px solid color-mix(in srgb,var(--fx-line) 55%,transparent)}
+.fx-tabs button,.fx-tabs a{border-radius:999px;font-weight:600;background:var(--inner)}
+.fx-seg{border:0;border-radius:var(--r-lg);background:var(--inner)}
+.fx-btn{border-radius:var(--r-lg);font-weight:600;font-size:16px;background:var(--fx);box-shadow:0 4px 14px color-mix(in srgb,var(--fx) 30%,transparent)}
+.fx-add{border-radius:var(--r-lg)}
+.fx-hub,.fx-ex,.fx-step-card{border-radius:var(--r-lg)}
+.fx-chip{border-radius:999px}

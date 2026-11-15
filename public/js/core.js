@@ -9,7 +9,7 @@ export const raw = (s) => new Safe(s);
 export const html = (el, safe) => { el.innerHTML = safe.s; };
 
 export const state = { boot: null, summaryDirty: true };
-export const APP_VERSION = 'v25 · app icon v2 · 10 Nov 2026';   // shown under "How are these made?" so it is easy to tell which version a device is running
+export const APP_VERSION = 'v26 · HeroUI look · 15 Nov 2026';   // shown under "How are these made?" so it is easy to tell which version a device is running
 
 import { request, downloadCsv } from './local-api.js';
 export { downloadCsv };
@@ -56,7 +56,7 @@ export function niceDate(d) {
 export function applyTheme() {
   const t = pref('theme', 'system'), dark = t === 'system' ? !matchMedia('(prefers-color-scheme: light)').matches : t === 'dark';
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = dark ? '#0D1117' : '#F3F5FA';
+  const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = dark ? '#000000' : '#F4F4F5';
 }
 export function time12(t) { const [hh, mm] = t.split(':').map(Number); return `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}`; }
 export function dayLabel(d) {
