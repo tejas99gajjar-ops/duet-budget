@@ -201,3 +201,5 @@ input[type=range]{accent-color:var(--primary)}
 .fx-road-marks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .fx-road-marks span{font-size:12px;padding:5px 10px;border-radius:999px;background:var(--inner)}
 .fx-eday{display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:1.5}.fx-eday span:first-child{font-size:18px;flex:none}
+.fx-exbar{position:sticky;top:60px;z-index:25;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--amber) 22%,var(--card));font-size:13px;box-shadow:var(--shadow-sm)}
+.fx-exbar button{padding:7px 12px;border-radius:999px;background:var(--text);color:var(--bg);font-weight:700;font-size:12.5px;white-space:nowrap}

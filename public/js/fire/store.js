@@ -28,9 +28,10 @@ function rowToPlan(row) {
   if (p.spending && !Object.keys(p.spending).length) delete p.spending;
   return normalizePlan(Object.fromEntries(Object.entries(p).filter(([, v]) => !(v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length))));
 }
-const persistCache = () => kv.set('cache', { planId: fs.row?.id, plan: fs.plan, pending: [...fs.pending], mc: fs.mc });
+const persistCache = () => fs.example ? undefined : kv.set('cache', { planId: fs.row?.id, plan: fs.plan, pending: [...fs.pending], mc: fs.mc });
 
 export async function load({ force = false } = {}) {
+  if (fs.example) return fs;
   if (fs.loading) return fs; if (fs.loaded && !force) return fs;
   fs.loading = true; fs.error = null;
   try {
@@ -56,12 +57,27 @@ function connect() {
 }
 export function disconnect() { unsub?.(); unsub = null; }
 async function refreshFromServer() {
+  if (fs.example) return;
   if (fs.saving || fs.pending.size && fs.timers?.size) return;
   const rows = await backend().fetchAll('fire_plans'); const row = rows[0]; if (!row) return;
   const fresh = rowToPlan(row); for (const s of fs.pending) fresh[s] = fs.plan[s];          // my unsent edits win
   fs.row = row; fs.plan = fresh; fs.mc = row.mc_last || fs.mc;
   fs.snapshots = (await backend().fetchAll('fire_snapshots')).sort((a, b) => String(b.taken_at).localeCompare(String(a.taken_at)));
   persistCache(); emit('remote');
+}
+
+// ---- example mode: a read-only demo plan held in memory. The real plan and the database are never touched. ----
+let stash = null;
+export const hasRealPlan = () => !!(fs.example ? stash?.plan : fs.plan);
+export function enterExample(plan) {
+  if (fs.example) return;
+  stash = { plan: fs.plan, row: fs.row, mc: fs.mc, snapshots: fs.snapshots, pending: fs.pending, history: fs.history };
+  fs.plan = normalizePlan(clone(plan)); fs.row = { id: 'example' }; fs.mc = null; fs.snapshots = []; fs.pending = new Set(); fs.history = []; fs.example = true; emit('edit');
+}
+export function exitExample() {
+  if (!fs.example) return;
+  Object.assign(fs, stash, { example: false }); stash = null; emit('edit');
+  if (fs.pending.size) flush().catch(() => {});
 }
 
 /** Creates the plan row for this account (once). */
@@ -76,6 +92,7 @@ export async function createPlan(plan = null, name) {
 // ---- editing: change a section, remember the old value for Undo, save shortly after ----
 fs.timers = new Map();
 export function edit(section, fn, { immediate = false, label = '', noUndo = false } = {}) {
+  if (fs.example) { emit('readonly'); return fs.plan[section]; }
   const old = clone(fs.plan[section]);
   const next = fn(clone(fs.plan[section]));
   fs.plan[section] = next === undefined ? fs.plan[section] : next;
@@ -85,8 +102,9 @@ export function edit(section, fn, { immediate = false, label = '', noUndo = fals
   return fs.plan[section];
 }
 export function editMany(patch, opts) { for (const [s, v] of Object.entries(patch)) edit(s, () => v, opts); }
-export function rename(name) { fs.plan.name = name; fs.pending.add('__name'); persistCache(); emit('edit'); clearTimeout(fs.timers.get('__name')); fs.timers.set('__name', setTimeout(() => flush().catch(() => {}), 400)); }
+export function rename(name) { if (fs.example) { emit('readonly'); return; } fs.plan.name = name; fs.pending.add('__name'); persistCache(); emit('edit'); clearTimeout(fs.timers.get('__name')); fs.timers.set('__name', setTimeout(() => flush().catch(() => {}), 400)); }
 export function undo() {
+  if (fs.example) return null;
   const h = fs.history.pop(); if (!h) return null;
   fs.plan[h.section] = h.old; fs.pending.add(h.section); persistCache(); emit('edit');
   clearTimeout(fs.timers.get(h.section)); fs.timers.set(h.section, setTimeout(() => flush().catch(() => {}), 200)); return h;
@@ -94,6 +112,7 @@ export function undo() {
 
 /** Sends every changed section. A network failure keeps them queued; the next flush retries. */
 export async function flush() {
+  if (fs.example) return;
   if (!fs.row?.id || !fs.pending.size || fs.saving) return;
   for (const t of fs.timers.values()) clearTimeout(t); fs.timers.clear();
   fs.saving = true; emit('saving');
@@ -107,22 +126,28 @@ export async function flush() {
   if (fs.pending.size && fs.online) flush().catch(() => {});
 }
 export async function saveMc(result) {
-  fs.mc = result; persistCache(); emit('mc');
+  fs.mc = result; persistCache(); emit('mc'); if (fs.example) return;
   try { if (fs.row?.id) await backend().update('fire_plans', { id: fs.row.id }, { mc_last: result }); } catch {}
 }
 
 /** Replace the whole plan (import / restore a snapshot). */
 export async function replacePlan(plan) {
+  if (fs.example) { emit('readonly'); return; }
   const p = normalizePlan(plan); fs.plan = p; for (const s of SECTIONS) fs.pending.add(s); fs.pending.add('__name'); fs.history = []; persistCache(); emit('edit'); await flush();
 }
 
 // ---- snapshots ----
 export async function takeSnapshot(name, note = '', summary = {}) {
+  if (fs.example) { emit('readonly'); throw new Error('This is an example plan, so check-ins are not saved.'); }
   const saved = await backend().insert('fire_snapshots', { space_id: spaceId(), plan_id: fs.row?.id || null, name, note, plan: clone({ name: fs.plan.name, ...Object.fromEntries(SECTIONS.map((s) => [s, fs.plan[s]])) }), summary });
   fs.snapshots = [saved, ...fs.snapshots]; emit('snapshots'); return saved;
 }
-export async function deleteSnapshot(id) { await backend().remove('fire_snapshots', { id }); fs.snapshots = fs.snapshots.filter((s) => s.id !== id); emit('snapshots'); }
-export async function restoreSnapshot(id) { const s = fs.snapshots.find((x) => x.id === id); if (!s) throw new Error('Snapshot not found'); await replacePlan(s.plan); }
+export async function deleteSnapshot(id) {
+  if (fs.example) return;
+  await backend().remove('fire_snapshots', { id }); fs.snapshots = fs.snapshots.filter((s) => s.id !== id); emit('snapshots'); }
+export async function restoreSnapshot(id) {
+  if (fs.example) return;
+  const s = fs.snapshots.find((x) => x.id === id); if (!s) throw new Error('Snapshot not found'); await replacePlan(s.plan); }
 
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => { if (fs.pending.size) flush().catch(() => {}); });

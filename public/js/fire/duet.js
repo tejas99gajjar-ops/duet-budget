@@ -6,7 +6,8 @@ import { SPEND_BUCKETS } from './defaults.js';
 
 const monthOf = (d) => d.slice(0, 7);
 const addMonthKey = (key, n) => { const [y, m] = key.split('-').map(Number); const i = y * 12 + m - 1 + n; return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`; };
-export const hasDuet = () => !!app.data?.space;
+import * as FSx from './store.js';
+export const hasDuet = () => !!app.data?.space && !FSx.fs.example;   // the example plan is never compared with the real budget
 export const duetCurrency = () => app.data?.space?.currency || 'INR';
 
 export const categoryNames = () => [...new Set((app.data?.categories || []).filter((c) => c.kind === 'expense' && !c.archived).map((c) => c.name))].sort();

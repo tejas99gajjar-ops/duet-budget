@@ -110,6 +110,7 @@ function addIntro(box, name, sub) {
   headEl.insertAdjacentHTML('afterend', seen[key] ? '' : `<div class="fx-intro" data-intro="${key}"><span class="ic">💡</span><div class="grow"><b>${info[0]}.</b> ${info[1]} <a class="fx-link" href="#/fire/learn">Open the guide</a></div><button type="button" data-intro-x="${key}" aria-label="Hide this tip">×</button></div>`);
   if (seen[key]) headEl.querySelector('.fx-head-right')?.insertAdjacentHTML('afterbegin', `<button class="fx-ib" data-intro-show="${key}" aria-label="What is this screen?">ⓘ</button>`);
 }
+let lastTap = 0; document.addEventListener('pointerdown', () => { lastTap = Date.now(); }, true); document.addEventListener('keydown', () => { lastTap = Date.now(); }, true);   // the read-only notice shows only after a real tap, not for background tidy-ups
 let docWired = false;
 function wireDoc() {
   if (docWired) return; docWired = true;
@@ -128,7 +129,7 @@ function wireDoc() {
 function wire() {
   X.setRedraw(() => draw()); wireDoc(); wireGuide();
   if (wired) return; wired = true;
-  FS.onFire((evt) => { if (['edit', 'remote', 'mc', 'snapshots'].includes(evt)) rerenderSoon(); });
+  FS.onFire((evt) => { if (evt === 'readonly' && Date.now() - lastTap < 1500) toast('This is an example plan, so changes are not saved. Tap "Make my own plan" to edit.', true); if (['edit', 'remote', 'mc', 'snapshots'].includes(evt)) rerenderSoon(); });
   onApp('change', () => { if (current && ['', 'live'].includes(current.parts[0] || '')) rerenderSoon(); });
 }
 

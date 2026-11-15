@@ -5,6 +5,8 @@ import { h, sheet } from '../core.js';
 import * as X from './ctx.js';
 import { inr, inrC } from './format.js';
 import { sectionHealth } from './health.js';
+import * as FS from './store.js';
+import { examplePlan } from './example.js';
 
 const KEY = 'duet.fire.help', STEPS_KEY = 'duet.fire.steps';
 const rd = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -49,15 +51,18 @@ const PATH = [
 ];
 const stepsDone = () => rd(STEPS_KEY, {});
 
-export function openGuide({ onExample } = {}) {
+export function startExample() { FS.enterExample(examplePlan()); location.hash = '#/fire'; X.redraw(); }
+export function leaveExample() { const had = FS.hasRealPlan(); FS.exitExample(); if (had) { location.hash = '#/fire'; X.redraw(); } else location.hash = '#/fire/wizard'; }
+
+export function openGuide() {
   const done = stepsDone(), on = helpOn();
   const sh = sheet(h`<div class="row between"><h1 style="font-size:20px">New here? Start here</h1><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <p class="muted" style="font-size:14px;line-height:1.5">This planner answers one question: <b>if you stop working at the age you choose, will your money last?</b> Nothing here changes your real money. It is a calculator you can play with.</p>
     <div class="col" style="gap:8px">${PATH.map(([t, s, href, k], i) => h`<a class="menu-row" href="${href}" data-act="close" data-step="${k}"><span class="menu-ico ${done[k] ? 'tick' : ''}">${done[k] ? '✓' : String(i + 1)}</span><span class="grow"><b>${t}</b><div class="small muted">${s}</div></span><span class="muted">›</span></a>`)}</div>
     <div class="menu-row" style="justify-content:space-between"><span class="grow"><b>Show helpers on every screen</b><div class="small muted">"What am I looking at?" and "Next" buttons</div></span><button type="button" class="switch ${on ? 'on' : ''}" data-act="help" role="switch" aria-checked="${on}" aria-label="Show helpers"></button></div>
-    ${onExample ? h`<button class="btn ghost" data-act="example">Explore an example plan first</button>` : ''}
+    <button class="btn ghost" data-act="example">${FS.fs.example ? 'Leave the example plan' : 'Explore an example plan first'}</button>
     <a class="btn ghost" href="#/fire/learn" data-act="close" style="text-align:center">Open the full guide and glossary</a>`,
-  { click: { help: (el) => { const v = !helpOn(); setHelp(v); el.classList.toggle('on', v); el.setAttribute('aria-checked', String(v)); X.redraw(); }, example: () => { sh.close(); onExample(); } } });
+  { click: { help: (el) => { const v = !helpOn(); setHelp(v); el.classList.toggle('on', v); el.setAttribute('aria-checked', String(v)); X.redraw(); }, example: () => { sh.close(); FS.fs.example ? leaveExample() : startExample(); } } });
   if (!on) { setHelp(true); const sw = sh.el.querySelector('.switch'); sw?.classList.add('on'); sw?.setAttribute('aria-checked', 'true'); X.redraw(); }   // tapping "New here?" turns the helpers on
   return sh;
 }
@@ -77,6 +82,7 @@ export function decorate(box, parts) {
   if (!box) return;
   const [a = ''] = parts, nm = PLAIN[a], kick = box.querySelector('.fx-kick');
   if (nm && kick && /^(FIRE PLANNER|FIRE DETAIL)$/.test(kick.textContent.trim())) kick.textContent = `${nm[0]} · ${nm[1]}`.toUpperCase();
+  if (FS.fs.example && !box.querySelector('.fx-exbar')) box.insertAdjacentHTML('afterbegin', `<div class="fx-exbar"><span>📘</span><span class="grow"><b>Example plan</b> · read-only, nothing is saved</span><button type="button" data-excit>${FS.hasRealPlan() ? 'Back to my plan' : 'Make my own plan'}</button></div>`);
   const headEl = box.querySelector('.fx-head');
   const on = helpOn(), key = screenKey(parts);
   if (!headEl || box.querySelector('.fx-helpbar,.fx-newbar')) return;
@@ -90,12 +96,13 @@ export function decorate(box, parts) {
 }
 
 let wired = false;
-export function wireGuide(getExample) {
+export function wireGuide() {
   if (wired) return; wired = true;
   document.addEventListener('click', (e) => {
     if (!document.querySelector('.fx') && !e.target.closest('.overlay')) return;
     const st = e.target.closest?.('[data-step]'); if (st) { const d = stepsDone(); d[st.dataset.step] = 1; wr(STEPS_KEY, d); }
-    const g = e.target.closest?.('[data-newhere]'); if (g) { e.preventDefault(); openGuide({ onExample: getExample?.() }); return; }
+    const ex = e.target.closest?.('[data-excit]'); if (ex) { e.preventDefault(); leaveExample(); return; }
+    const g = e.target.closest?.('[data-newhere]'); if (g) { e.preventDefault(); openGuide(); return; }
     const hp = e.target.closest?.('[data-help]'); if (hp) { e.preventDefault(); openHelp(hp.dataset.help); }
   });
 }

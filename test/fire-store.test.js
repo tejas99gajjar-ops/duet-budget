@@ -72,3 +72,27 @@ test('without the SQL file the app reports "setup needed" instead of failing', a
   S.configure(b2); S.state.user = await b2.auth.signUp(); await b2.rpc('create_space', { p_name: 'Z', p_user_name: 'Z', p_tz: 'UTC' }); await S.init();
   F.fs.loaded = false; F.fs.plan = null; await F.load({ force: true }); assert.equal(F.fs.needsSetup, true);   // ...and the planner turns it into a friendly state
 });
+
+test('example mode is read-only, never saved, and leaving it restores the real plan untouched', async () => {
+  const { examplePlan } = await import('../public/js/fire/example.js');
+  // an in-memory "real" plan (earlier tests may have left the store pointing at a project without tables)
+  F.fs.plan = defaultPlan({ today: '2026-10-27', name: 'My real plan' }); F.fs.row = { id: 'real-1' }; F.fs.pending = new Set(); F.fs.example = false;
+  const before = JSON.stringify(F.fs.plan);
+  const events = []; const off = F.onFire((e) => events.push(e));
+  F.enterExample(examplePlan());
+  assert.equal(F.fs.example, true); assert.equal(F.fs.plan.name, 'Example plan: Arjun and Priya'); assert.equal(F.hasRealPlan(), true);
+  F.edit('holdings', (h) => [...h, { id: 'zz', name: 'X', kind: 'mf', assetClass: 'equity', value: 1, sips: [] }], { immediate: true });
+  F.rename('Hacked'); await F.flush();
+  assert.ok(events.includes('readonly'), 'editing the example tells the screen it is read-only');
+  assert.ok(!events.includes('saving'), 'nothing is sent to the database');
+  assert.equal(F.fs.pending.size, 0, 'no edit is queued'); assert.ok(!F.fs.plan.holdings.some((h) => h.id === 'zz'), 'the edit did not apply'); assert.equal(F.fs.plan.name, 'Example plan: Arjun and Priya');
+  await assert.rejects(() => F.takeSnapshot('x'));
+  F.exitExample(); off();
+  assert.equal(F.fs.example, false); assert.equal(JSON.stringify(F.fs.plan), before, 'the real plan is back, unchanged'); assert.equal(F.fs.row.id, 'real-1');
+});
+
+test('the example plan runs through the engine and gives a full answer', async () => {
+  const { examplePlan } = await import('../public/js/fire/example.js'), { runPlan } = await import('../public/js/fire/engine.js'), { normalizePlan } = await import('../public/js/fire/defaults.js');
+  const r = runPlan(normalizePlan(examplePlan()), { today: '2026-11-15' });
+  assert.ok(Number.isFinite(r.gap.pct) && r.gap.pct > 0, 'a funded ratio'); assert.ok(r.target.total > 0); assert.equal(r.meta.retireAge, 50);
+});
