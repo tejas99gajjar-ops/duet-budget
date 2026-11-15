@@ -5,6 +5,7 @@ import * as FS from './store.js';
 import * as X from './ctx.js';
 import { head, fxNav, IC, toast } from './ui.js';
 import { linkTerms, openTerm } from './terms.js';
+import { decorate, wireGuide } from './guide.js';
 
 const cssHref = new URL('../../fire.css', import.meta.url).href;
 function ensureCss() { if (!document.getElementById('fire-css')) { const l = document.createElement('link'); l.id = 'fire-css'; l.rel = 'stylesheet'; l.href = cssHref; document.head.append(l); const ui = document.getElementById('heroui-css'); if (ui) document.head.append(ui); } }   // keep the HeroUI layer after fire.css so it wins on equal specificity
@@ -36,7 +37,7 @@ async function draw() {
   try { const fn = await loader(); await fn(fresh, { parts: rest, params: parts }); }
   catch (e) { console.error(e); html(fresh, h`<div class="fx"><div class="fx-note warn"><span>😕</span><div><b>This screen could not load.</b><div class="fx-sub">${e.message}</div></div></div>${fxNav(NAV_OF[name] || 'overview')}</div>`); }
   if (id !== drawId || !document.contains(old)) return;          // a newer navigation took over
-  const box = fresh.querySelector('.fx'); addCrumbs(box, parts); addSections(box, parts); addIntro(box, name, rest[0]); linkTerms(fresh);
+  const box = fresh.querySelector('.fx'); addCrumbs(box, parts); addSections(box, parts); addIntro(box, name, rest[0]); decorate(box, parts); linkTerms(fresh);
   if (box && !sameScreen) box.classList.add('fx-enter');
   fresh.classList.remove('fx-stale'); old.replaceWith(fresh); current.root = fresh; lastKey = key; lastHtml = fresh.innerHTML;
   scrollTo(0, sameScreen ? y : 0);                                // a new screen opens at its top; a refresh of the same screen keeps your place
@@ -125,7 +126,7 @@ function wireDoc() {
 }
 
 function wire() {
-  X.setRedraw(() => draw()); wireDoc();
+  X.setRedraw(() => draw()); wireDoc(); wireGuide();
   if (wired) return; wired = true;
   FS.onFire((evt) => { if (['edit', 'remote', 'mc', 'snapshots'].includes(evt)) rerenderSoon(); });
   onApp('change', () => { if (current && ['', 'live'].includes(current.parts[0] || '')) rerenderSoon(); });

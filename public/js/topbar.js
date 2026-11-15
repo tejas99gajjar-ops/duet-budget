@@ -10,7 +10,7 @@ const recall = () => { try { return sessionStorage.getItem(K) || 'budgets'; } ca
 
 export const MONEY = [['transactions', 'Transactions', '#/transactions'], ['budgets', 'Budgets', '#/budgets'], ['wallets', 'Wallets', '#/wallets']];
 export const moneyHome = () => '#/' + recall();
-export const PLAN = [['overview', 'Overview', '#/fire'], ['detail', 'Detail', '#/fire/detail/target'], ['goals', 'Goals', '#/fire/goals'], ['inputs', 'Inputs', '#/fire/inputs'], ['live', 'Live', '#/fire/live'], ['checkin', 'Check-in', '#/fire/checkin'], ['learn', 'Guide', '#/fire/learn']];
+export const PLAN = [['overview', 'My answer', '#/fire'], ['detail', 'Check my math', '#/fire/detail/target'], ['goals', 'Saving for', '#/fire/goals'], ['inputs', 'My facts', '#/fire/inputs'], ['live', 'Real vs plan', '#/fire/live'], ['checkin', 'Progress', '#/fire/checkin'], ['learn', 'Guide', '#/fire/learn']];   // plain names; each screen's heading keeps the original (Overview, Detail, Goals, Inputs, Live, Check-in)
 const PLAN_OF = { '': 'overview', detail: 'detail', goals: 'goals', goal: 'goals', inputs: 'inputs', prices: 'inputs', live: 'live', checkin: 'checkin', learn: 'learn', how: 'learn', settings: 'overview', wizard: 'overview' };
 
 const avatarBtn = (space0) => {
