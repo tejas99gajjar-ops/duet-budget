@@ -203,3 +203,24 @@ input[type=range]{accent-color:var(--primary)}
 .fx-eday{display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:1.5}.fx-eday span:first-child{font-size:18px;flex:none}
 .fx-exbar{position:sticky;top:60px;z-index:25;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--amber) 22%,var(--card));font-size:13px;box-shadow:var(--shadow-sm)}
 .fx-exbar button{padding:7px 12px;border-radius:999px;background:var(--text);color:var(--bg);font-weight:700;font-size:12.5px;white-space:nowrap}
+
+/* ---- the sliding top-bar highlight ---- */
+.tb-seg{position:relative}
+.tb-ind{position:absolute;top:4px;bottom:4px;left:0;width:0;border-radius:var(--r-md);background:var(--cursor);box-shadow:0 1px 4px rgba(0,0,0,.22);z-index:0;transition:transform .28s cubic-bezier(.25,.8,.25,1),width .28s cubic-bezier(.25,.8,.25,1);will-change:transform,width;pointer-events:none}
+#appsw[data-kind=plan] .tb-ind{background:var(--fx)}
+.tb-seg a,.tb-seg a.on{position:relative;z-index:1;background:none!important;box-shadow:none!important}
+.tb-seg a.on{color:var(--text)}
+#appsw[data-kind=plan] .tb-seg a.on{color:#fff}
+.tb-seg a.lit{color:var(--text)}#appsw[data-kind=plan] .tb-seg a.lit{color:#fff}
+.tb-seg a.on:not(.lit){}
+
+/* ---- live page swipe: neighbour pages slide in beside the current one ---- */
+.pv-wrap{position:fixed;z-index:15;overflow:hidden;pointer-events:none}
+.pv-slot{position:absolute;inset:0;overflow:hidden;background:var(--bg);will-change:transform}
+.pv{padding:8px 16px 110px;display:flex;flex-direction:column;gap:12px}
+#view{touch-action:pan-y pinch-zoom}
+#appsw.dragging .tb-seg a.on:not(.lit),#appsw[data-kind=plan].dragging .tb-seg a.on:not(.lit){color:var(--muted)}
+/* ---- a sheet locks everything behind it ---- */
+body.has-sheet{overflow:hidden;overscroll-behavior:none}
+.overlay{touch-action:none;overscroll-behavior:contain}
+.sheet{overscroll-behavior:contain;touch-action:pan-y}

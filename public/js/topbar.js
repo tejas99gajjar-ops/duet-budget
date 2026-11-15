@@ -18,7 +18,8 @@ const avatarBtn = (space0) => {
   return h`<button class="tb-av" data-menu aria-label="Account and settings"><span class="avatars">${m.slice(0, 2).map(avatar)}</span></button>`;
 };
 
-/** Draw the bar for the current route. `kind` comes from the route table: 'money' | 'plan' | undefined. */
+/** Draw the bar for the current route. `kind` comes from the route table: 'money' | 'plan' | undefined.
+ *  The bar is kept between pages of the same kind, and one highlight slides to the new tab (also while a finger drags it, see gestures.js). */
 export function renderTopbar(el, kind, path) {
   if (!el) return;
   if (!kind) { el.hidden = true; el.innerHTML = ''; return; }
@@ -26,9 +27,51 @@ export function renderTopbar(el, kind, path) {
   let items, active, label;
   if (kind === 'money') { active = path.split('/')[0]; remember(active); items = MONEY; label = 'Money'; }
   else { const part = path.split('/')[1] || ''; active = PLAN_OF[part] || 'overview'; items = PLAN; label = 'Plan'; }
-  el.hidden = false; el.dataset.kind = kind;
-  el.innerHTML = h`<div class="tb"><div class="tb-seg" role="tablist" aria-label="${label}">${items.map(([id, name, href]) => h`<a role="tab" href="${href}" class="${id === active ? 'on' : ''}" aria-selected="${id === active}">${name}</a>`)}</div>${avatarBtn(sp)}</div>`.s;
-  el.querySelector('.tb-seg a.on')?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
+  el.hidden = false;
+  const seg = el.querySelector('.tb-seg');
+  if (seg && el.dataset.kind === kind && seg.children.length === items.length + 1) {            // same bar: just move the highlight
+    seg.querySelectorAll('a').forEach((a, i) => { const on = items[i][0] === active; a.classList.toggle('on', on); a.setAttribute('aria-selected', String(on)); });
+    settleIndicator(el, true); return;
+  }
+  el.dataset.kind = kind;
+  el.innerHTML = h`<div class="tb"><div class="tb-seg" role="tablist" aria-label="${label}"><i class="tb-ind" aria-hidden="true"></i>${items.map(([id, name, href]) => h`<a role="tab" data-tab="${id}" href="${href}" class="${id === active ? 'on' : ''}" aria-selected="${id === active}">${name}</a>`)}</div>${avatarBtn(sp)}</div>`.s;
+  settleIndicator(el, false);
+}
+
+// ---- the sliding highlight ----
+const tabs = (el) => [...el.querySelectorAll('.tb-seg a')];
+function putInd(el, left, width, animate) {
+  const ind = el.querySelector('.tb-ind'); if (!ind) return;
+  ind.style.transition = animate ? '' : 'none'; ind.style.width = width + 'px'; ind.style.transform = `translateX(${left}px)`;
+}
+/** Put the highlight under the active tab (animated unless told otherwise). */
+export function settleIndicator(el = document.getElementById('appsw'), animate = true) {
+  if (!el || el.hidden) return;
+  const place = () => { const a = el.querySelector('.tb-seg a.on'); if (!a) return; putInd(el, a.offsetLeft, a.offsetWidth, animate); a.scrollIntoView?.({ block: 'nearest', inline: 'center', behavior: animate ? 'smooth' : 'auto' }); };
+  place(); if (!animate) requestAnimationFrame(place);
+}
+/** While a finger drags a page, slide the highlight from one tab towards another by p (0..1). */
+export function dragIndicator(fromId, toId, p) {
+  const el = document.getElementById('appsw'); if (!el || el.hidden) return;
+  const all = tabs(el), A = all.find((a) => a.dataset.tab === fromId), B = all.find((a) => a.dataset.tab === toId); if (!A || !B) return;
+  const k = Math.max(0, Math.min(1, p));
+  putInd(el, A.offsetLeft + (B.offsetLeft - A.offsetLeft) * k, A.offsetWidth + (B.offsetWidth - A.offsetWidth) * k, false);
+  el.classList.add('dragging'); all.forEach((a) => a.classList.toggle('lit', a === (k > 0.5 ? B : A)));
+}
+/** Let go: glide the highlight the rest of the way to its tab. */
+export function finishIndicator(toId, ms = 230) {
+  const el = document.getElementById('appsw'); if (!el || el.hidden) return;
+  const B = tabs(el).find((a) => a.dataset.tab === toId), ind = el.querySelector('.tb-ind'); if (!B || !ind) return;
+  ind.style.transition = `transform ${ms}ms cubic-bezier(.22,.8,.24,1),width ${ms}ms cubic-bezier(.22,.8,.24,1)`; ind.style.width = B.offsetWidth + 'px'; ind.style.transform = `translateX(${B.offsetLeft}px)`;
+  tabs(el).forEach((a) => a.classList.toggle('lit', a === B));
+}
+export function clearLit() { const el = document.getElementById('appsw'); el?.classList.remove('dragging'); el?.querySelectorAll('.tb-seg a.lit').forEach((a) => a.classList.remove('lit')); }
+/** Which top-bar tab a page belongs to ('budgets', 'detail', ...), from a hash like "#/fire/detail/gap". */
+export function barTabOf(hash) {
+  const path = String(hash).replace(/^#\/?/, '').split('?')[0], [a, b] = path.split('/');
+  if (MONEY.some((m) => m[0] === a)) return a;
+  if (a === 'fire') return PLAN_OF[b || ''] || 'overview';
+  return null;
 }
 
 const L = (href, ico, name, sub) => h`<a class="menu-row" href="${href}" data-act="close"><span class="menu-ico">${ico}</span><span class="grow"><b>${name}</b><div class="small muted">${sub}</div></span><span class="muted">›</span></a>`;

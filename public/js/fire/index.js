@@ -133,6 +133,12 @@ function wire() {
   onApp('change', () => { if (current && ['', 'live'].includes(current.parts[0] || '')) rerenderSoon(); });
 }
 
+/** Draws a planner screen into a detached element for a swipe preview. Touches no shared state. */
+export async function renderPreview(el, parts) {
+  const [name = '', ...rest] = parts, loader = SCREENS[name]; if (!loader || !FS.fs.plan) return;
+  try { const fn = await loader(); await fn(el, { parts: rest, params: parts }); } catch { return; }
+  const box = el.querySelector('.fx'); addSections(box, parts); addIntro(box, name, rest[0]); decorate(box, parts); linkTerms(el);
+}
 export async function fireRoute(root, params) {
   ensureCss(); wire();
   const parts = String(params.rest || '').split('/').filter(Boolean); current = { root, parts }; lastKey = null;   // arriving by navigation: open at the top

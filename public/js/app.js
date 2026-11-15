@@ -1,6 +1,6 @@
 import { state, loadBoot, h, html, toast, sheetOpen, pref, setPref, applyTheme } from './core.js';
 import { renderTopbar, openMenu, moneyHome } from './topbar.js';
-import { initGestures } from './gestures.js';
+import { initGestures, clearPreviews, prefetchNeighbors } from './gestures.js';
 import { createSupabaseBackend } from './backend.js';
 import * as S from './store.js';
 import * as auth from './auth.js';
@@ -46,7 +46,7 @@ async function render({ keepScroll = false } = {}) {
   if (r.setup && (!signedIn() || hasSpace())) { location.hash = signedIn() ? '#/dashboard' : '#/welcome'; return; }
   if (hasSpace()) await loadBoot();
   current = r;
-  const root = fresh(); if (window.__slide) { root.classList.add('slide-' + window.__slide); window.__slide = null; }
+  const root = fresh();
   const showNav = !r.public && !r.setup && !r.noNav && r.tab !== undefined;
   nav.hidden = !showNav; root.classList.toggle('noNav', !showNav);
   renderTopbar(document.getElementById('appsw'), r.public || r.setup ? null : r.bar, path);
@@ -55,7 +55,17 @@ async function render({ keepScroll = false } = {}) {
   try { await r.fn(root, { ...r.re.exec(path).groups, ...q }, afterAuth); }
   catch (e) { if (e.message !== 'Please sign in') html(root, h`<div class="empty"><span class="e">😕</span>${e.message}<br><br><button class="btn small" data-reload>Retry</button></div>`); }
   scrollTo(0, y);
+  window.__swipeDone?.();                       // a finished swipe lets go of its preview now the real page is drawn
+  if (!window.__swipeDone) { clearPreviews(); if (r.bar) prefetchNeighbors(); }
 }
+
+/** Draws a page into a detached element (no side effects on the visible page) so swipes can slide it in. */
+window.__duetPreview = async (hash, el) => {
+  const [path, query = ''] = hash.replace(/^#\/?/, '').split('?'), r = routes.find((x) => x.re.test(path)); if (!r) return;
+  const groups = r.re.exec(path).groups || {};
+  if (r.bar === 'plan') { const m = await import('./fire/index.js'); return m.renderPreview(el, String(groups.rest || '').split('/').filter(Boolean)); }
+  await r.fn(el, { ...groups, ...Object.fromEntries(new URLSearchParams(query)) }, afterAuth);
+};
 
 // ---- sync status bar: offline / syncing, plus live refresh when the cloud data changes ----
 const bar = document.getElementById('syncbar');
