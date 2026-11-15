@@ -30,7 +30,6 @@ export const header = (extra = '') => {
 // ---------- dashboard ----------
 const tipsList = (list) => h`<div class="col" style="gap:10px;margin-top:10px">${list.map((t) => h`<div class="row" style="gap:10px;align-items:flex-start"><span style="font-size:18px">${t.icon}</span><div style="font-size:14px">${t.text}</div></div>`)}</div>`;
 const tipPart = (p) => (Array.isArray(p) ? h`<b class="${{ b: '', ok: 'pos', pos: 'pos', neg: 'neg' }[p[0].trim()] ?? ''}">${p[1]}</b>` : p);
-const tipsOpen = () => { try { return localStorage.getItem('duet.tips') === 'open'; } catch { return false; } };
 export async function dashboard(root) {
   const s = await get('/summary');
   const b = s.budgets, top = [...b.items].sort((a, c) => c.pct - a.pct).slice(0, 2);
@@ -43,27 +42,54 @@ export async function dashboard(root) {
   const tipLines = paceLines(s.pace, (c) => money(c)), sk = s.pace?.ok && s.pace.skewAll && s.pace.hasPrior ? skewInsight(s.pace.skewAll, (c) => money(c), s.pace.spikePlan) : null;
   const dueList = s.pace?.ok ? s.pace.commit.upcoming.filter((c) => c.status !== 'late').slice(0, 3) : [], coming = dueList.length ? dueList.map((c) => `${c.name} ${money(c.amount, { decimals: false })} on the ${ordinal(c.day)} (${whenText(c.dueIn)})`).join(' · ') + (s.pace.commit.upcoming.length > dueList.length ? ` · +${s.pace.commit.upcoming.length - dueList.length} more` : '') : '';
   const shape = sk && sk.title !== 'Too early to tell' ? { ...sk, first: sk.text.split(/(?<=\.)\s/)[0] } : null;
+  const ov = b.overall, over = b.items.filter((i) => i.status === 'over').sort((x, y) => y.pct - x.pct), warn = b.items.filter((i) => i.status === 'warning');
+  const ring = (frac, color, txt) => { const r = 40, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac || 0)); return h`<svg class="hring" viewBox="0 0 100 100" role="img" aria-label="${txt}"><circle cx="50" cy="50" r="${r}" fill="none" stroke="var(--inner)" stroke-width="10"/><circle cx="50" cy="50" r="${r}" fill="none" stroke="${raw(color)}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${c * f} ${c}" transform="rotate(-90 50 50)"/><text x="50" y="55" text-anchor="middle" class="hring-t">${txt}</text></svg>`; };
+  const tone = (st) => (st === 'over' ? 'var(--red)' : st === 'warning' ? 'var(--amber)' : 'var(--accent)');
+  // "Needs attention": only things that call for action, each one tap away from the screen that fixes it
+  const att = [];
+  over.slice(0, 2).forEach((i) => att.push({ href: `#/budget/${i.id}`, icon: i.category?.icon || '⚠️', tone: 'neg', title: `${i.category?.name || 'Budget'} is over budget`, sub: `${money(Math.max(0, -i.remaining_cents))} over · ${money(i.spent_cents)} of ${money(i.limit_cents)}` }));
+  if (ov && ov.status !== 'over' && ov.pace_status === 'over') att.push({ href: '#/budgets', icon: '📈', tone: 'warn', title: 'On course to overspend', sub: `About ${money(ov.proj_cents, { decimals: false })} by month-end vs ${money(ov.limit_cents, { decimals: false })} budget` });
+  warn.slice(0, 1).forEach((i) => att.push({ href: `#/budget/${i.id}`, icon: i.category?.icon || '⚠️', tone: 'warn', title: `${i.category?.name || 'Budget'} is nearing its limit`, sub: `${pct(i.pct)} spent · ${money(Math.max(0, i.remaining_cents))} left` }));
+  dueList.slice(0, 2).forEach((c) => att.push({ href: '#/pace', icon: '📅', tone: 'warn', title: `${c.name} due ${whenText(c.dueIn)}`, sub: `${money(c.amount, { decimals: false })} on the ${ordinal(c.day)}` }));
+  if (shape) att.push({ href: '#/pace', icon: shape.icon, tone: shape.tone === 'good' ? 'pos' : 'warn', title: shape.title, sub: shape.first });
+  const attRow = (a) => h`<a class="arow" href="${a.href}"><span class="arow-i">${a.icon}</span><span class="grow"><b>${a.title}</b><div class="small muted">${a.sub}</div></span><span class="arow-c ${a.tone}">›</span></a>`;
+  const tipsBody = h`${tipLines.length ? h`<div class="col" style="gap:8px">${tipLines.map((l) => h`<a class="tipline" href="#/pace" data-act="close"><span class="ic">${l.icon}</span><span class="grow">${l.parts.map(tipPart)}${l.detail?.length ? h`<span class="tipdetail">${l.detail.join(' ')}</span>` : ''}</span>${I.chev}</a>`)}${coming ? h`<a class="tipshape warn" href="#/pace" data-act="close"><span>📅</span><span class="grow"><b>Coming up.</b> ${coming}</span></a>` : ''}${shape ? h`<a class="tipshape ${shape.tone}" href="#/pace" data-act="close"><span>${shape.icon}</span><span class="grow"><b>${shape.title}.</b> ${shape.first}</span></a>` : ''}</div>` : h`<div class="tipline"><span class="ic">🗓️</span><span class="grow">Log a few days of expenses and income to see your daily spend and savings forecast here.</span></div>`}
+    ${s.insights.length ? (tipLines.length ? h`<details class="moretips"><summary>More tips (${s.insights.length})</summary>${tipsList(s.insights)}</details>` : tipsList(s.insights)) : ''}`;
+  const tipTotal = tipLines.length + s.insights.length;
   html(root, h`${header()}
-    <div class="card glow"><div class="eyebrow">Total net worth (all wallets)</div><div class="big" style="margin:4px 0 10px">${money(s.net_worth_cents)}</div>
-      ${s.savings_rate != null ? h`<span class="pill">Savings rate: ${pct(Math.max(0, s.savings_rate))}</span>` : h`<span class="pill">No income logged this month</span>`}
-      <div class="row" style="margin-top:14px;align-items:stretch">
-        <div class="inner grow"><div class="eyebrow">Income (this month)</div><div class="pos" style="font-size:18px;font-weight:700;margin-top:6px">${money(s.income_cents, { sign: true })}</div></div>
-        <div class="inner grow"><div class="eyebrow">Expenses (this month)</div><div class="neg" style="font-size:18px;font-weight:700;margin-top:6px">${s.expense_cents ? '-' : ''}${money(s.expense_cents)}</div></div></div></div>
-    <div class="card"><div class="row between" style="margin-bottom:14px"><h2>Active Budget Pacing</h2><a class="link" href="#/budgets">View Details →</a></div>
-      ${b.overall ? h`<div class="col" style="gap:14px">${pace(b.overall, 'Overall Monthly Budget', '🕒')}${top.map((i) => pace(i, i.category?.name, i.category?.icon))}</div>`
-        : h`<div class="empty" style="padding:8px"><span class="e">🎯</span>No budgets yet.<br><a class="link" href="#/budgets">Create your first budget</a></div>`}</div>
-    ${true ? h`<div class="card tipscard ${tipsOpen() ? '' : 'closed'}" id="tipscard"><button type="button" class="tipshead" data-act="tips" aria-expanded="${tipsOpen()}"><span class="eyebrow" style="color:var(--amber)">Smart tips${s.insights.length + tipLines.length ? ` · ${tipLines.length + s.insights.length}` : ''}</span><span class="tipsum">${tipLines[0] ? tipLines[0].parts.map((p) => (Array.isArray(p) ? p[1] : p)).join('') : 'Log a few days to see forecasts'}</span><span class="tipchev" aria-hidden="true">⌄</span></button><div class="tipsbody"><div class="row" style="justify-content:flex-end"><button class="link" data-act="why" style="font-size:11px">How are these made?</button></div>
-      ${tipLines.length ? h`<div class="col" style="gap:8px;margin-top:10px">${tipLines.map((l) => h`<a class="tipline" href="#/pace"><span class="ic">${l.icon}</span><span class="grow">${l.parts.map(tipPart)}${l.detail?.length ? h`<span class="tipdetail">${l.detail.join(' ')}</span>` : ''}</span>${I.chev}</a>`)}${coming ? h`<a class="tipshape warn" href="#/pace"><span>📅</span><span class="grow"><b>Coming up.</b> ${coming}</span></a>` : ''}${shape ? h`<a class="tipshape ${shape.tone}" href="#/pace"><span>${shape.icon}</span><span class="grow"><b>${shape.title}.</b> ${shape.first}</span></a>` : ''}</div>` : ''}
-      ${!tipLines.length ? h`<div class="tipline" style="margin-top:10px"><span class="ic">🗓️</span><span class="grow">Log a few days of expenses and income to see your daily spend and savings forecast here.</span></div>` : ''}
-      ${s.insights.length ? (tipLines.length ? h`<details class="moretips"><summary>More tips (${s.insights.length})</summary>${tipsList(s.insights)}</details>` : tipsList(s.insights)) : ''}</div></div>` : ''}
-    <div class="card"><div class="row between" style="margin-bottom:8px"><h2 style="font-size:18px">Recent Transactions</h2><a class="link" href="#/transactions">See all →</a></div>
+    <a class="card glow hcard" href="#/wallets" aria-label="Net worth, open wallets"><div class="row between"><div class="eyebrow">Net worth · all wallets</div><span class="hgo">›</span></div><div class="big" style="margin:6px 0 10px">${money(s.net_worth_cents)}</div>
+      ${s.savings_rate != null ? h`<span class="pill">Savings rate ${pct(Math.max(0, s.savings_rate))}</span>` : h`<span class="pill">No income logged this month</span>`}</a>
+    <div class="card hcard" role="button" tabindex="0" data-act="month" aria-label="This month, open the budget pacing detail"><div class="row between"><div class="eyebrow">This month</div><span class="hgo">›</span></div>
+      <div class="row" style="gap:16px;margin-top:10px;align-items:center">${ov ? ring(ov.pct, tone(ov.status), pct(ov.pct)) : ring(0, 'var(--line)', '–')}
+        <div class="grow col" style="gap:4px;min-width:0">${ov ? h`<div class="hnum">${money(ov.spent_cents)}<small> of ${money(ov.limit_cents)}</small></div>
+          <div class="small ${ov.remaining_cents < 0 ? 'neg' : 'muted'}">${ov.remaining_cents < 0 ? `${money(-ov.remaining_cents)} over budget` : `${money(ov.remaining_cents)} left`}</div>
+          ${ov.proj_cents != null ? h`<div class="small ${ov.pace_status === 'over' ? 'neg' : ov.pace_status === 'watch' ? 'warn' : 'muted'}">On course for ${money(ov.proj_cents, { decimals: false })}</div>` : ''}`
+          : h`<div class="hnum" style="font-size:18px">No budget yet</div><a class="link" href="#/budgets">Create your first budget</a>`}</div></div>
+      <div class="row" style="margin-top:14px;gap:10px"><div class="inner grow"><div class="eyebrow">Income</div><div class="pos hfig">${money(s.income_cents, { sign: true })}</div></div>
+        <div class="inner grow"><div class="eyebrow">Expenses</div><div class="neg hfig">${s.expense_cents ? '-' : ''}${money(s.expense_cents)}</div></div></div></div>
+    <div class="card hcard"><div class="row between" style="margin-bottom:6px"><h2>Needs attention</h2>${att.length ? h`<span class="pill bad">${att.length}</span>` : ''}</div>
+      <div class="col" style="gap:8px" id="attn">${att.length ? att.slice(0, 4).map(attRow) : h`<div class="arow calm"><span class="arow-i">✅</span><span class="grow"><b>All clear</b><div class="small muted">Nothing needs your attention right now.</div></span></div>`}</div></div>
+    <button class="tiprow" data-act="tips" aria-label="Open smart tips"><span class="eyebrow" style="color:var(--amber)">Smart tips${tipTotal ? ` · ${tipTotal}` : ''}</span><span class="tipsum">${tipLines[0] ? tipLines[0].parts.map((p) => (Array.isArray(p) ? p[1] : p)).join('') : 'Log a few days to see forecasts'}</span><span class="tipchev" style="transform:rotate(-90deg)" aria-hidden="true">⌄</span></button>
+    <div class="card hcard"><div class="row between" style="margin-bottom:8px"><h2 style="font-size:18px">Latest transactions</h2><a class="link" href="#/transactions">See all →</a></div>
       <form class="row" data-act="search" style="margin-bottom:6px"><input class="input" name="q" placeholder="Search transactions" style="padding:10px 14px;font-size:14px" aria-label="Search"><button class="iconbtn" aria-label="Search">${I.search}</button></form>
-      ${s.recent.length ? groupedRows(s.recent) : h`<div class="empty"><span class="e">🧾</span>No transactions yet.<br>Tap <b>+</b> to add your first one.</div>`}</div>`);
-  root.addEventListener('keydown', (e) => { const el = e.target.closest?.('[data-act=bud]'); if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); location.hash = `#/budget/${el.dataset.id}`; } });
+      ${s.recent.length ? groupedRows(s.recent.slice(0, 5)) : h`<div class="empty"><span class="e">🧾</span>No transactions yet.<br>Tap <b>+</b> to add your first one.</div>`}</div>`);
+  const openMonth = () => {
+    const sh = sheet(h`<div class="row between"><h1 style="font-size:20px">Budget pacing</h1><a class="link" href="#/budgets" data-act="close">All budgets →</a></div>
+      ${ov ? h`<div class="col" style="gap:16px">${pace(ov, 'Overall Monthly Budget', '🕒')}${[...b.items].sort((x, y) => y.pct - x.pct).map((i) => pace(i, i.category?.name, i.category?.icon))}</div>` : h`<div class="empty"><span class="e">🎯</span>No budgets yet.<br><a class="link" href="#/budgets" data-act="close">Create your first budget</a></div>`}
+      <button class="btn ghost" data-act="close">Close</button>`, { click: { bud: (el) => { sh.close(); location.hash = `#/budget/${el.dataset.id}`; } } });
+  };
+  const openTips = () => { sheet(h`<div class="row between"><h1 style="font-size:20px">Smart tips</h1><button class="link" data-act="why" style="font-size:11px">How are these made?</button></div>${tipsBody}<button class="btn ghost" data-act="close">Close</button>`, { click: { why: () => sheet(h`<h1 style="font-size:20px">How smart tips work</h1><p class="muted">They are plain arithmetic on your own transactions and budgets (spend pace, budget %, month-over-month change, share of income kept). <b>No AI model, LLM or machine learning is used</b>, and nothing leaves your server.</p><p class="muted" style="font-size:11px">App version ${APP_VERSION}</p><button class="btn" data-act="close">Got it</button>`) } }); };
+  root.addEventListener('keydown', (e) => { const el = e.target.closest?.('[data-act=month]'); if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openMonth(); } });
   bind(root, { submit: { search: (el) => { location.hash = '#/transactions' + qs({ q: new FormData(el).get('q') }); } },
-    click: { bud: (el) => { location.hash = `#/budget/${el.dataset.id}`; },
-      tips: (el) => { const card = el.closest('#tipscard'), open = card.classList.contains('closed'); card.classList.toggle('closed', !open); el.setAttribute('aria-expanded', String(open)); try { localStorage.setItem('duet.tips', open ? 'open' : 'closed'); } catch {} },
-      why: () => { const sh = sheet(h`<h1 style="font-size:20px">How smart tips work</h1><p class="muted">They are plain arithmetic on your own transactions and budgets (spend pace, budget %, month-over-month change, share of income kept). <b>No AI model, LLM or machine learning is used</b>, and nothing leaves your server.</p><p class="muted" style="font-size:11px">App version ${APP_VERSION}</p><button class="btn" data-act="close">Got it</button>`); } } });
+    click: { month: openMonth, tips: openTips } });
+  // The plan's status joins "Needs attention" once the planner has loaded in the background (it never blocks the page)
+  planRow().then((r) => { const box = root.querySelector('#attn'); if (r && box && box.isConnected) { box.querySelector('.calm')?.remove(); box.insertAdjacentHTML('beforeend', attRow(r).s); } }).catch(() => {});
+}
+/** One row about the FIRE plan (only when it is off track or has no plan yet). */
+async function planRow() {
+  const FS = await import('./fire/store.js'); await FS.load(); if (!FS.fs.plan) return null;
+  const X = await import('./fire/ctx.js'), g = X.run().gap, p = Math.round((g.pct || 0) * 100);
+  return g.pct >= 1 ? null : { href: '#/fire', icon: '🎯', tone: g.pct >= 0.8 ? 'warn' : 'neg', title: 'Retirement plan is behind', sub: `${p}% funded · tap to see how to close the gap` };
 }
 
 // ---------- full list with filters ----------
