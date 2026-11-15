@@ -9,7 +9,7 @@ export const raw = (s) => new Safe(s);
 export const html = (el, safe) => { el.innerHTML = safe.s; };
 
 export const state = { boot: null, summaryDirty: true };
-export const APP_VERSION = 'v28 · calm Home · 15 Nov 2026';   // shown under "How are these made?" so it is easy to tell which version a device is running
+export const APP_VERSION = 'v29 · Money tab polish · 15 Nov 2026';   // shown under "How are these made?" so it is easy to tell which version a device is running
 
 import { request, downloadCsv } from './local-api.js';
 export { downloadCsv };
@@ -73,6 +73,7 @@ export const I = {
   close: raw('<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>'),
   edit: raw('<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4"/></svg>'),
   trash: raw('<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>'),
+  filter: raw('<svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>'),
   sun: raw('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>'),
   moon: raw('<svg viewBox="0 0 24 24"><path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z"/></svg>'),
   gear: raw('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14 3h-4l-.6 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2L10 21h4l.6-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>'),

@@ -10,16 +10,17 @@ const pageHead = (title, left = '', right = '') => h`<div class="page-head"><div
 export async function wallets(root, q) {
   const [s] = await Promise.all([get('/summary'), reload()]);
   const ws = state.boot.wallets, total = ws.reduce((a, w) => a + w.balance_cents, 0);
-  html(root, h`<div class="page-head"><div><h1>Your Wallets</h1><div class="sub">Manage cash, bank accounts, savings and shared funds</div></div><button class="btn small" data-act="add">${I.plus} Add</button></div>
-    <div class="card row between"><div><div class="eyebrow">Total balance</div><div class="big pos" style="font-size:32px">${money(total)}</div></div>
+  html(root, h`<div class="card row between"><div><div class="eyebrow">Total balance</div><div class="big pos" style="font-size:32px">${money(total)}</div></div>
       <div class="small muted" style="text-align:right">${ws.length} wallet${ws.length === 1 ? '' : 's'} · ${space().currency}<br><span class="${s.income_cents - s.expense_cents >= 0 ? 'pos' : 'neg'}" style="font-weight:600">${money(s.income_cents - s.expense_cents, { sign: true })} this month</span></div></div>
+    <div class="grid g4" style="gap:8px">
+      <button class="inner center" data-act="add" style="padding:14px 2px"><div class="pos" style="font-size:20px">＋</div><b class="small">Wallet</b></button>
+      <a class="inner center" href="#/tx/new?type=transfer" style="padding:14px 2px"><div class="pos" style="font-size:20px">⇄</div><b class="small">Transfer</b></a>
+      <a class="inner center" href="#/portfolio" style="padding:14px 2px"><div class="pos" style="font-size:20px">📈</div><b class="small">Portfolio</b></a>
+      <button class="inner center" data-act="csv" style="padding:14px 2px"><div class="pos" style="font-size:20px">⬇</div><b class="small">Export CSV</b></button></div>
     ${ws.length ? h`<div class="grid g2">${ws.map((w) => h`<a class="wallet" href="#/wallet/${w.id}" style="--c:${w.color}"><div class="row between"><span class="wi">${WALLET_ICON[w.type]}</span><span class="badge">${w.type}</span></div>
         <b class="ellipsis" style="margin-top:6px">${w.name}</b><div class="bal">${money(w.balance_cents)}</div><div class="row between small muted"><span>${w.tx_count} transaction${w.tx_count === 1 ? '' : 's'}</span><span>${space().currency}</span></div></a>`)}</div>`
       : h`<div class="empty card"><span class="e">👛</span>No wallets yet. Add your bank account, cash or a savings pot.</div>`}
-    <div class="card"><div class="grid g3">
-      <a class="inner center" href="#/tx/new?type=transfer" style="padding:16px 4px"><div class="pos" style="font-size:20px">⇄</div><b class="small">Transfer</b></a>
-      <a class="inner center" href="#/portfolio" style="padding:16px 4px"><div class="pos" style="font-size:20px">📈</div><b class="small">Portfolio</b></a>
-      <button class="inner center" data-act="csv" style="padding:16px 4px"><div class="pos" style="font-size:20px">⬇</div><b class="small">Export CSV</b></button></div></div>`);
+    `);
   bind(root, { click: { add: () => walletSheet(), csv: () => downloadCsv() } });
   if (q.add) walletSheet();
 }
@@ -80,7 +81,7 @@ export async function budgets(root) {
     const [b] = await Promise.all([get('/budgets' + qs({ mode })), cats().length ? 0 : reload()]);
     data = b; const o = b.overall, label = monthName(b.today, true);
     const stCls = (s) => s === 'over' ? 'neg' : s === 'warning' ? 'warn' : 'pos';
-    html(root, h`<div class="page-head"><h1>Budgets</h1><div class="seg small"><button class="${mode === 'period' ? 'on' : ''}" data-act="mode" data-v="period">This Month</button><button class="${mode === 'all' ? 'on' : ''}" data-act="mode" data-v="all">All Time</button></div></div>
+    html(root, h`<div class="page-head" style="justify-content:flex-end"><div class="seg small"><button class="${mode === 'period' ? 'on' : ''}" data-act="mode" data-v="period">This Month</button><button class="${mode === 'all' ? 'on' : ''}" data-act="mode" data-v="all">All Time</button></div></div>
       ${o ? h`<div class="card row" style="gap:18px">${ring(o.pct, o.status)}<div class="grow"><b>${mode === 'all' ? 'All-time budget' : label + ' Budget'}</b><div class="big" style="font-size:30px;margin:2px 0">${money(o.spent_cents)}</div><div class="muted small">of ${money(o.limit_cents)} budget</div>
           <span class="pill" style="margin-top:8px;white-space:normal;${o.remaining_cents < 0 ? 'color:var(--red);background:transparent' : ''}">${o.remaining_cents < 0 ? money(-o.remaining_cents) + ' over' : money(o.remaining_cents) + ' remaining'}${o.days_left ? ` · ${o.days_left} days left` : ''}</span>
           ${o.proj_cents != null ? h`<div class="small ${o.pace_status === 'over' ? 'neg' : o.pace_status === 'watch' ? 'warn' : 'muted'}" style="margin-top:6px">On course for ${money(o.proj_cents, { decimals: false })}${o.due_cents > 0 ? `, counting ${money(o.due_cents, { decimals: false })} still due` : ''}${o.everyday_safe_cents != null ? ` · keep everyday to ${money(o.everyday_safe_cents, { decimals: false })}/day` : ''}</div>` : ''}</div></div>`
@@ -93,7 +94,8 @@ export async function budgets(root) {
           <div class="row between small"><span class="${i.status === 'ok' ? 'muted' : stCls(i.status)}">${i.status === 'over' ? `⚠ Over by ${money(-i.remaining_cents)}` : i.status === 'warning' ? `⚠ Almost over budget · ${money(i.remaining_cents)} left` : `${money(i.remaining_cents)} remaining`}</span>
             <span class="${i.status === 'ok' ? 'pos' : 'muted'}">${i.everyday_safe_cents != null ? `Everyday: ${money(i.everyday_safe_cents)}/day` : i.scheduled_only ? '' : i.safe_per_day_cents != null ? `Safe: ${money(i.safe_per_day_cents)}/day` : ''}</span></div>
           ${i.proj_cents != null ? h`<div class="small ${i.pace_status === 'over' ? 'neg' : i.pace_status === 'watch' ? 'warn' : 'muted'}">On course for ${money(i.proj_cents, { decimals: false })} by month-end${i.due_cents > 0 ? ` · ${money(i.due_cents, { decimals: false })} still due` : ''}</div>` : ''}</a>`)
-          : h`<div class="empty"><span class="e">🧮</span>No category budgets yet.</div>`}</div></div>`);
+          : h`<div class="empty"><span class="e">🧮</span>No category budgets yet.</div>`}</div></div>
+      <div class="grid g2" style="gap:8px"><a class="inner center" href="#/pace" style="padding:14px 4px"><div style="font-size:20px">⏱️</div><b class="small">Spending pace</b></a><a class="inner center" href="#/recurring" style="padding:14px 4px"><div style="font-size:20px">🔁</div><b class="small">Recurring</b></a></div>`);
   };
   bind(root, { click: { mode: (el) => { mode = el.dataset.v; draw(); }, add: () => budgetSheet(undefined, new Set(data.items.map((x) => x.category_id))), edit: (el) => budgetSheet(data.items.find((x) => x.id === Number(el.dataset.id))) } });
   await draw();

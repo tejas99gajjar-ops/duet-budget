@@ -149,3 +149,7 @@ input[type=range]{accent-color:var(--primary)}
 .arow.calm{cursor:default}
 .tiprow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:14px 16px;border-radius:var(--r-xl);background:var(--card);box-shadow:var(--shadow-sm);color:inherit;min-width:0}
 .tiprow .tipsum{flex:1;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---- Money tab ---- */
+.fbtn{position:relative;flex:none}.fbtn.on{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--primary)}
+.fbadge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--primary);color:#fff;font-size:10px;font-style:normal;font-weight:700;display:grid;place-items:center;padding:0 4px}

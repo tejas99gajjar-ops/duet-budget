@@ -96,22 +96,28 @@ async function planRow() {
 export async function list(root, q) {
   const f = { q: q.q || '', type: q.type || '', wallet: q.wallet || '', member: q.member || '', category: q.category || '' };
   const items = []; let more = false, loading = false;
-  const draw = () => html(root, h`<div class="page-head"><h1 style="font-size:22px">All transactions</h1></div>
-    <form class="col" data-act="filter" style="gap:8px"><input class="input" name="q" value="${f.q}" placeholder="Search notes, tags, categories" type="search">
-      <div class="grid g2"><select class="input" name="type" style="padding:10px 14px;font-size:14px"><option value="">All types</option>${['expense', 'income', 'transfer'].map((t) => h`<option value="${t}" ${f.type === t ? raw('selected') : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`)}</select>
-      <select class="input" name="wallet" style="padding:10px 14px;font-size:14px"><option value="">All wallets</option>${wallets().map((w) => h`<option value="${w.id}" ${String(w.id) === f.wallet ? raw('selected') : ''}>${w.name}</option>`)}</select>
-      <select class="input" name="member" style="padding:10px 14px;font-size:14px"><option value="">Everyone</option>${space().members.map((m) => h`<option value="${m.id}" ${String(m.id) === f.member ? raw('selected') : ''}>${m.name}</option>`)}</select>
-      <select class="input" name="category" style="padding:10px 14px;font-size:14px"><option value="">All categories</option>${cats().map((c) => h`<option value="${c.id}" ${String(c.id) === f.category ? raw('selected') : ''}>${c.icon} ${c.name}</option>`)}</select></div></form>
+  const FILTERS = [['type', 'Type', () => [['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']]], ['wallet', 'Wallet', () => wallets().map((w) => [String(w.id), w.name])],
+    ['member', 'Person', () => space().members.map((m) => [String(m.id), m.name])], ['category', 'Category', () => cats().map((c) => [String(c.id), `${c.icon} ${c.name}`])]];
+  const labelOf = (k, v) => (FILTERS.find((x) => x[0] === k)[2]().find((o) => o[0] === v) || [v, v])[1];
+  const activeKeys = () => FILTERS.map((x) => x[0]).filter((k) => f[k]);
+  const draw = () => html(root, h`<form class="row" data-act="filter" style="gap:8px"><input class="input grow" name="q" value="${f.q}" placeholder="Search notes, tags, categories" type="search" style="padding:11px 14px;font-size:15px">
+      <button type="button" class="iconbtn fbtn ${activeKeys().length ? 'on' : ''}" data-act="filters" aria-label="Filters">${I.filter || '⚙'}${activeKeys().length ? h`<i class="fbadge">${activeKeys().length}</i>` : ''}</button></form>
+    ${activeKeys().length ? h`<div class="chips" style="margin-top:-2px">${activeKeys().map((k) => h`<button type="button" class="chip on" data-act="clear" data-k="${k}">${labelOf(k, f[k])} ✕</button>`)}<button type="button" class="chip" data-act="clearall">Clear all</button></div>` : ''}
     <div id="rows">${items.length ? groupedRows(items) : h`<div class="empty"><span class="e">🔎</span>Nothing matches.</div>`}</div>
     ${more ? h`<button class="btn ghost" data-act="more">Load more</button>` : ''}`);
+  const filterSheet = () => {
+    const sh = sheet(h`<div class="row between"><h1 style="font-size:20px">Filter transactions</h1><button class="iconbtn" data-act="close" aria-label="Close">${I.close}</button></div>
+      <form class="col" data-act="apply" style="gap:12px">${FILTERS.map(([k, label, opts]) => h`<label class="f">${label}<select class="input" name="${k}"><option value="">All</option>${opts().map(([v, t]) => h`<option value="${v}" ${f[k] === v ? raw('selected') : ''}>${t}</option>`)}</select></label>`)}
+      <div class="row"><button type="button" class="btn ghost" data-act="reset">Clear</button><button class="btn">Show results</button></div></form>`, { submit: { apply: (el) => { Object.assign(f, Object.fromEntries(new FormData(el))); sh.close(); return fetchPage(true); } },
+      click: { reset: () => { FILTERS.forEach(([k]) => { f[k] = ''; }); sh.close(); return fetchPage(true); } } });
+  };
   const fetchPage = async (reset) => {
     if (loading) return; loading = true;
     if (reset) items.length = 0;
     const r = await get('/transactions' + qs({ ...f, limit: 40, offset: items.length })); items.push(...r.items); more = r.has_more; loading = false; draw();
   };
-  bind(root, { submit: { filter: (el) => { Object.assign(f, Object.fromEntries(new FormData(el))); return fetchPage(true); } },
-    change: { filter: (el) => { if (el.tagName !== 'FORM') return; } }, click: { more: () => fetchPage(false) } });
-  root.addEventListener('change', (e) => { if (e.target.matches('select')) { Object.assign(f, Object.fromEntries(new FormData(root.querySelector('form')))); fetchPage(true); } });
+  bind(root, { submit: { filter: (el) => { f.q = String(new FormData(el).get('q') || ''); return fetchPage(true); } },
+    click: { more: () => fetchPage(false), filters: filterSheet, clear: (el) => { f[el.dataset.k] = ''; return fetchPage(true); }, clearall: () => { FILTERS.forEach(([k]) => { f[k] = ''; }); return fetchPage(true); } } });
   await fetchPage(true);
 }
 
