@@ -10,8 +10,7 @@ const pageHead = (title, left = '', right = '') => h`<div class="page-head"><div
 export async function wallets(root, q) {
   const [s] = await Promise.all([get('/summary'), reload()]);
   const ws = state.boot.wallets, total = ws.reduce((a, w) => a + w.balance_cents, 0);
-  html(root, h`${header()}
-    <div class="page-head"><div><h1>Your Wallets</h1><div class="sub">Manage cash, bank accounts, savings and shared funds</div></div><button class="btn small" data-act="add">${I.plus} Add</button></div>
+  html(root, h`<div class="page-head"><div><h1>Your Wallets</h1><div class="sub">Manage cash, bank accounts, savings and shared funds</div></div><button class="btn small" data-act="add">${I.plus} Add</button></div>
     <div class="card row between"><div><div class="eyebrow">Total balance</div><div class="big pos" style="font-size:32px">${money(total)}</div></div>
       <div class="small muted" style="text-align:right">${ws.length} wallet${ws.length === 1 ? '' : 's'} · ${space().currency}<br><span class="${s.income_cents - s.expense_cents >= 0 ? 'pos' : 'neg'}" style="font-weight:600">${money(s.income_cents - s.expense_cents, { sign: true })} this month</span></div></div>
     ${ws.length ? h`<div class="grid g2">${ws.map((w) => h`<a class="wallet" href="#/wallet/${w.id}" style="--c:${w.color}"><div class="row between"><span class="wi">${WALLET_ICON[w.type]}</span><span class="badge">${w.type}</span></div>

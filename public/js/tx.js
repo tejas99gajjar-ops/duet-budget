@@ -24,9 +24,7 @@ export const header = (extra = '') => {
   const m = space().members;
   return h`<div class="top"><div class="logo"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg></div>
     <div class="brand grow"><b>Duet Budget</b><small>${space().name.toUpperCase().slice(0, 26)}</small></div>
-    <a class="avatars" href="#/settings" aria-label="Shared with ${m.map((x) => x.name).join(' and ')}">${m.map(avatar)}</a>
-    <button class="iconbtn" data-theme-toggle aria-label="Toggle theme">${I.sun}</button>
-    <a class="iconbtn" href="#/settings" aria-label="Settings">${I.gear}</a></div>`;
+    <button class="tb-av" data-menu aria-label="Account and settings, shared with ${m.map((x) => x.name).join(' and ')}"><span class="avatars">${m.map(avatar)}</span></button></div>`;
 };
 
 // ---------- dashboard ----------
@@ -72,7 +70,7 @@ export async function dashboard(root) {
 export async function list(root, q) {
   const f = { q: q.q || '', type: q.type || '', wallet: q.wallet || '', member: q.member || '', category: q.category || '' };
   const items = []; let more = false, loading = false;
-  const draw = () => html(root, h`<div class="page-head"><a class="iconbtn" href="#/dashboard" aria-label="Back">${I.back}</a><h1 style="font-size:22px">Transactions</h1><span style="width:36px"></span></div>
+  const draw = () => html(root, h`<div class="page-head"><h1 style="font-size:22px">All transactions</h1></div>
     <form class="col" data-act="filter" style="gap:8px"><input class="input" name="q" value="${f.q}" placeholder="Search notes, tags, categories" type="search">
       <div class="grid g2"><select class="input" name="type" style="padding:10px 14px;font-size:14px"><option value="">All types</option>${['expense', 'income', 'transfer'].map((t) => h`<option value="${t}" ${f.type === t ? raw('selected') : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`)}</select>
       <select class="input" name="wallet" style="padding:10px 14px;font-size:14px"><option value="">All wallets</option>${wallets().map((w) => h`<option value="${w.id}" ${String(w.id) === f.wallet ? raw('selected') : ''}>${w.name}</option>`)}</select>

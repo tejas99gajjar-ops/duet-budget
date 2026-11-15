@@ -1,5 +1,5 @@
 import { state, loadBoot, h, html, toast, sheetOpen, pref, setPref, applyTheme } from './core.js';
-import { renderSwitcher } from './switcher.js';
+import { renderTopbar, openMenu, moneyHome } from './topbar.js';
 import { createSupabaseBackend } from './backend.js';
 import * as S from './store.js';
 import * as auth from './auth.js';
@@ -13,14 +13,14 @@ let current = null, refreshTimer = null;
 
 const routes = [
   ['welcome', auth.welcome, { public: true }], ['login', auth.login, { public: true }], ['signup', auth.signup, { public: true }], ['setup', auth.setup, { setup: true }],
-  ['dashboard', tx.dashboard, { tab: 'dashboard', live: true }], ['wallets', money.wallets, { tab: 'wallets', live: true }],
-  ['wallet/:id', money.walletDetail, { tab: 'wallets', live: true }], ['budgets', money.budgets, { tab: 'budgets', live: true }], ['budget/:id', money.budgetDetail, { tab: 'budgets', live: true }],
-  ['analytics', an.analytics, { tab: 'analytics', live: true }], ['portfolio', money.portfolio, { live: true, noNav: true }],
-  ['transactions', tx.list, { live: true, noNav: true }], ['tx/new', tx.form, { noNav: true }], ['tx/:id/edit', tx.form, { noNav: true }],
+  ['dashboard', tx.dashboard, { tab: 'dashboard', live: true }], ['money', () => { location.replace(moneyHome()); }, { tab: 'money' }], ['wallets', money.wallets, { tab: 'money', bar: 'money', live: true }],
+  ['wallet/:id', money.walletDetail, { tab: 'money', live: true }], ['budgets', money.budgets, { tab: 'money', bar: 'money', live: true }], ['budget/:id', money.budgetDetail, { tab: 'money', live: true }],
+  ['analytics', an.analytics, { tab: 'analytics', live: true }], ['portfolio', money.portfolio, { live: true, tab: 'money' }],
+  ['transactions', tx.list, { live: true, tab: 'money', bar: 'money' }], ['tx/new', tx.form, { noNav: true }], ['tx/:id/edit', tx.form, { noNav: true }],
   ['tx/:id', tx.detail, { live: true, noNav: true }], ['settings', settings.main, { live: true, tab: '' }], ['profile', settings.profile, { noNav: true }],
   ['pace', (root) => import('./pace-ui.js').then((m) => m.screen(root)), { live: true, noNav: true }],
   ['activity', settings.activity, { live: true, noNav: true }], ['recurring', settings.recurring, { live: true, noNav: true }],
-  ['fire(?:/(?<rest>.*))?', (root, params) => import('./fire/index.js').then((m) => m.fireRoute(root, params)), { noNav: true, section: 'fire' }],   // FIRE planner: loaded on demand
+  ['fire(?:/(?<rest>.*))?', (root, params) => import('./fire/index.js').then((m) => m.fireRoute(root, params)), { tab: 'plan', bar: 'plan' }],   // FIRE planner: loaded on demand
 ].map(([p, fn, opts]) => ({ re: new RegExp('^' + p.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn, ...opts }));
 
 function parseHash() {
@@ -47,7 +47,7 @@ async function render({ keepScroll = false } = {}) {
   current = r;
   const root = fresh(), showNav = !r.public && !r.setup && !r.noNav && r.tab !== undefined;
   nav.hidden = !showNav; root.classList.toggle('noNav', !showNav);
-  renderSwitcher(document.getElementById('appsw'), r.public || r.setup ? null : r.section === 'fire' ? 'fire' : showNav ? 'budget' : null, '#/' + path + (location.hash.includes('?') ? '?' + location.hash.split('?')[1] : ''));
+  renderTopbar(document.getElementById('appsw'), r.public || r.setup ? null : r.bar, path);
   nav.querySelectorAll('a[data-tab]').forEach((a) => a.classList.toggle('on', a.dataset.tab === r.tab));
   html(root, h`<div class="spin">Loading…</div>`);
   try { await r.fn(root, { ...r.re.exec(path).groups, ...q }, afterAuth); }
@@ -72,7 +72,7 @@ S.on('change', () => {
 
 window.addEventListener('hashchange', () => render());
 window.addEventListener('duet:unauth', () => { state.boot = null; S.signedOut().finally(() => { location.hash = '#/welcome'; render(); }); });
-document.addEventListener('click', (e) => { if (e.target.closest('[data-reload]')) return location.reload(); const t = e.target.closest('[data-theme-toggle]'); if (!t) return;
+document.addEventListener('click', (e) => { if (e.target.closest('[data-reload]')) return location.reload(); if (e.target.closest('[data-menu]')) return openMenu(); const t = e.target.closest('[data-theme-toggle]'); if (!t) return;
   setPref('theme', document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'); applyTheme(); });
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => pref('theme', 'system') === 'system' && applyTheme());
 document.addEventListener('visibilitychange', () => { if (!document.hidden && signedIn() && S.state.online) S.flush().catch(() => {}); });

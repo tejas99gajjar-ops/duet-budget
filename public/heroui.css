@@ -113,3 +113,23 @@ input[type=range]{accent-color:var(--primary)}
 .fx-add{border-radius:var(--r-lg)}
 .fx-hub,.fx-ex,.fx-step-card{border-radius:var(--r-lg)}
 .fx-chip{border-radius:999px}
+
+/* ---- one sticky top bar (Money / Plan) + account menu ---- */
+#appsw{padding:calc(8px + env(safe-area-inset-top)) 16px 6px}
+.tb{display:flex;align-items:center;gap:10px;max-width:480px;margin:0 auto}
+.tb-seg{flex:1;min-width:0;display:flex;gap:4px;background:var(--inner);border-radius:var(--r-lg);padding:4px;overflow-x:auto;scrollbar-width:none}
+.tb-seg::-webkit-scrollbar{display:none}
+.tb-seg a{flex:1 0 auto;text-align:center;padding:8px 12px;border-radius:var(--r-md);font-weight:600;font-size:13.5px;color:var(--muted);white-space:nowrap;transition:background .15s,color .15s}
+.tb-seg a.on{background:var(--cursor);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.22)}
+#appsw[data-kind=plan] .tb-seg a.on{background:var(--fx);color:#fff}
+.tb-av{flex:none;background:none;border:0;padding:0;display:flex;align-items:center}
+.tb-av .avatar{border-color:var(--bg)}
+.menu-row{display:flex;align-items:center;gap:12px;padding:12px;border-radius:var(--r-lg);background:var(--inner)}
+.menu-row b{font-size:15px}.menu-ico{font-size:20px;width:34px;height:34px;border-radius:var(--r-md);display:grid;place-items:center;background:var(--card)}
+/* the old FIRE bottom bar is replaced by the top bar */
+.fx-nav{display:none!important}
+.fx{padding-bottom:24px}
+.top .tb-av{margin-left:auto}
+.tb-seg a{padding:8px 10px;font-size:13px}
+.tb-seg{-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+#appsw[data-kind=money] .tb-seg{-webkit-mask-image:none;mask-image:none}
